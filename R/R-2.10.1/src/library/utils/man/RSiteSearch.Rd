@@ -1,0 +1,87 @@
+% File src/library/utils/man/RSiteSearch.Rd
+% Part of the R package, http://www.R-project.org
+% Copyright 1995-2009 R Core Development Team
+% Distributed under GPL 2 or later
+
+\name{RSiteSearch}
+\alias{RSiteSearch}
+\title{
+  Search for Key Words or Phrases in the R-help Mailing List Archives
+  or Documentation
+}
+\description{
+  Search for key words or phrases in the R-help mailing list
+  archives, help pages, vignettes or task views, using the search engine
+  at \url{http://search.r-project.org} and view them in a web browser.
+}
+\usage{
+RSiteSearch(string,
+            restrict = c("Rhelp08", "functions", "views"),
+            format = c("normal", "short"),
+            sortby = c("score", "date:late", "date:early",
+                       "subject", "subject:descending",
+                       "from", "from:descending",
+                       "size", "size:descending"),
+            matchesPerPage = 20)
+}
+\arguments{
+  \item{string}{word(s) or phrase to search.  If the words are to be
+    searched as one entity, enclose all words in braces (see example).}
+  \item{restrict}{a character vector, typically of length larger than one:
+    What areas to search in:
+    \code{Rhelp08} for R-help mailing list archive from January 2008
+    \code{Rhelp02} for mailing list archive 2002-2007
+    \code{Rhelp01} for mailing list archive before 2002
+    \code{R-devel} for R-devel mailing list
+    \code{R-sig-mix} for R-devel mailing list    
+    \code{functions} for help pages
+    \code{views} for task views
+    \code{vignettes} for package vignettes
+    Use \code{c()} to specify more than one.}
+  \item{format}{\code{normal} or \code{short} (no excerpts); can be
+    abbreviated.}
+  \item{sortby}{character string (can be abbreviated) indicating how to
+    sort the search results:\cr
+    (\code{score},
+    \code{date:late} for sorting by date with latest results first,
+    \code{date:early} for earliest first,
+    \code{subject} for subject in alphabetical order,
+    \code{subject:descending} for reverse alphabetical order,
+    \code{from} or \code{from:descending} for sender (when applicable),
+    \code{size} or \code{size:descending} for size.)}
+  \item{matchesPerPage}{How many items to show per page.}
+}
+\value{
+  (Invisibly) the complete URL passed to the browser,
+  including the query string.
+}
+\details{
+  This function is designed to work with the search site at
+  \url{http://search.r-project.org}, and depends on that site
+  continuing to be made available (thanks to Jonathan Baron and the
+  School of Arts and Sciences of the University of Pennsylvania).
+
+  Unique partial matches will work for all arguments.  Each new
+  browser window will stay open unless you close it.
+}
+\author{Andy Liaw and Jonathan Baron}
+\seealso{
+  \code{\link{help.search}}, \code{\link{help.start}} for local searches.
+
+  \code{\link{browseURL}} for how the help file is displayed.
+}
+\examples{\donttest{ # need Internet connection
+RSiteSearch("{logistic regression}") # matches exact phrase
+Sys.sleep(5) # allow browser to open, take a quick look
+RSiteSearch("Baron Liaw", restrict = "Rhelp02")
+## Search in R-devel archive and recent mail (and store the query-string):
+Sys.sleep(5)
+fullquery <- RSiteSearch("S4", restrict = c("R-dev", "Rhelp08"))
+fullquery # a string of ~ 116 characters
+## the latest purported bug reports, responses ...
+%% FIXME: "/bug/ and other reg.exp.s seem to fail
+Sys.sleep(5)
+RSiteSearch("bug", restrict = "R-devel", sortby = "date:late")
+}}
+\keyword{utilities}
+\keyword{documentation}

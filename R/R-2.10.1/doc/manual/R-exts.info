@@ -1,0 +1,230 @@
+This is R-exts.info, produced by makeinfo version 4.7 from R-exts.texi.
+
+INFO-DIR-SECTION Programming
+START-INFO-DIR-ENTRY
+* R Extensions: (R-exts).      Writing R Extensions.
+END-INFO-DIR-ENTRY
+
+   This is a guide to extending R.
+
+   Copyright (C) 1999-2009 R Development Core Team
+
+   Permission is granted to make and distribute verbatim copies of this
+manual provided the copyright notice and this permission notice are
+preserved on all copies.
+
+   Permission is granted to copy and distribute modified versions of
+this manual under the conditions for verbatim copying, provided that the
+entire resulting derived work is distributed under the terms of a
+permission notice identical to this one.
+
+   Permission is granted to copy and distribute translations of this
+manual into another language, under the above conditions for modified
+versions, except that this permission notice may be stated in a
+translation approved by the R Development Core Team.
+
+
+Indirect:
+R-exts.info-1: 957
+R-exts.info-2: 297494
+
+Tag Table:
+(Indirect)
+Node: Top957
+Node: Acknowledgements1663
+Node: Creating R packages2003
+Node: Package structure3385
+Ref: Package structure-Footnote-17231
+Node: The DESCRIPTION file7304
+Ref: The DESCRIPTION file-Footnote-120907
+Node: The INDEX file21038
+Node: Package subdirectories21916
+Ref: Package subdirectories-Footnote-130998
+Ref: Package subdirectories-Footnote-231208
+Ref: Package subdirectories-Footnote-331285
+Ref: Package subdirectories-Footnote-431408
+Ref: Package subdirectories-Footnote-531778
+Ref: Package subdirectories-Footnote-631855
+Node: Package bundles31938
+Node: Data in packages33040
+Ref: Data in packages-Footnote-135509
+Node: Configure and cleanup35559
+Node: Using Makevars41952
+Ref: Using Makevars-Footnote-147330
+Node: Back-compatibility for Makevars47473
+Node: Configure example48881
+Node: Using F95 code53458
+Node: Checking and building packages54878
+Node: Checking packages55392
+Ref: Checking packages-Footnote-162675
+Ref: Checking packages-Footnote-262772
+Node: Building packages62824
+Ref: Building packages-Footnote-166084
+Node: Customizing checking and building66151
+Node: Writing package vignettes69030
+Ref: Writing package vignettes-Footnote-172716
+Node: Submitting a package to CRAN72847
+Ref: Submitting a package to CRAN-Footnote-177486
+Node: Package name spaces77693
+Node: Specifying imports and exports79880
+Node: Registering S3 methods82145
+Node: Load hooks83493
+Node: An example90906
+Node: Summary -- converting an existing package92203
+Node: Name spaces with S4 classes and methods93021
+Node: Writing portable packages95898
+Node: Encoding issues99046
+Ref: Encoding issues-Footnote-1103463
+Node: Diagnostic messages103545
+Node: Internationalization106946
+Node: C-level messages107721
+Node: R messages109736
+Node: Installing translations111280
+Node: Makefile support112332
+Node: CITATION files113907
+Ref: CITATION files-Footnote-1116124
+Node: Package types116239
+Node: Frontend116687
+Node: Translation117333
+Node: Services118658
+Node: Writing R documentation files119768
+Node: Rd format120246
+Node: Documenting functions125044
+Ref: Documenting functions-Footnote-1135887
+Ref: Documenting functions-Footnote-2136043
+Node: Documenting data sets136137
+Node: Documenting S4 classes and methods138397
+Node: Documenting packages140674
+Node: Sectioning142036
+Node: Marking text143237
+Ref: Marking text-Footnote-1147241
+Node: Lists and tables147380
+Node: Cross-references149231
+Ref: Cross-references-Footnote-1151690
+Node: Mathematics151755
+Node: Insertions153193
+Ref: Insertions-Footnote-1154772
+Ref: Insertions-Footnote-2155099
+Node: Indices155171
+Node: Platform-specific sections156388
+Node: Conditional text157297
+Node: Dynamic pages158732
+Ref: Dynamic pages-Footnote-1162153
+Node: Encoding162225
+Ref: Encoding-Footnote-1164841
+Node: Processing Rd format165072
+Node: Back-compatibility issues167118
+Node: Changes in R 2.10.0168091
+Node: Changes in R 2.9.0169820
+Node: Unnumbered versions170600
+Node: Tidying and profiling R code172711
+Node: Tidying R code173242
+Node: Profiling R code for speed175578
+Ref: Profiling R code for speed-Footnote-1180043
+Ref: Profiling R code for speed-Footnote-2180139
+Node: Profiling R code for memory use180229
+Node: Memory statistics from Rprof182677
+Node: Tracking memory allocations183943
+Node: Tracing copies of an object184800
+Node: Profiling compiled code187077
+Node: Linux187603
+Node: Solaris190361
+Node: Mac OS X190615
+Node: Debugging190943
+Node: Browsing191727
+Ref: Browsing-Footnote-1194178
+Node: Debugging R code194311
+Node: Using gctorture and valgrind206881
+Node: Using gctorture207521
+Node: Using valgrind208652
+Node: Debugging compiled code213071
+Node: Finding entry points216272
+Node: Inspecting R objects217350
+Node: System and foreign language interfaces220038
+Node: Operating system access220708
+Node: Interface functions .C and .Fortran221551
+Node: dyn.load and dyn.unload229240
+Ref: dyn.load and dyn.unload-Footnote-1233511
+Node: Registering native routines233581
+Node: Creating shared objects240444
+Node: Interfacing C++ code244757
+Node: Fortran I/O247636
+Node: Linking to other packages248864
+Node: Unix-alikes249604
+Ref: Unix-alikes-Footnote-1252175
+Node: Windows252235
+Node: Handling R objects in C254549
+Ref: Handling R objects in C-Footnote-1260033
+Ref: Handling R objects in C-Footnote-2260106
+Node: Garbage Collection260199
+Node: Allocating storage264698
+Node: Details of R types265520
+Node: Attributes268713
+Node: Classes272325
+Node: Handling lists273105
+Node: Handling character data274418
+Node: Finding and setting variables276369
+Ref: Finding and setting variables-Footnote-1278246
+Node: Some convenience functions278374
+Node: Named objects and copying280722
+Node: Interface functions .Call and .External283535
+Node: Calling .Call284206
+Node: Calling .External286406
+Node: Missing and special values289630
+Node: Evaluating R expressions from C291295
+Node: Zero-finding295386
+Node: Calculating numerical derivatives297494
+Ref: Calculating numerical derivatives-Footnote-1303834
+Node: Parsing R code from C303920
+Ref: Parsing R code from C-Footnote-1306423
+Node: External pointers and weak references306510
+Node: An external pointer example310892
+Node: Vector accessor functions312896
+Node: Character encoding issues313815
+Node: The R API316369
+Ref: The R API-Footnote-1319423
+Node: Memory allocation319503
+Node: Transient319875
+Node: User-controlled321517
+Node: Error handling322775
+Node: Error handling from FORTRAN323860
+Node: Random numbers324332
+Node: Missing and IEEE values326197
+Node: Printing327406
+Node: Printing from FORTRAN328143
+Node: Calling C from FORTRAN and vice versa329171
+Node: Numerical analysis subroutines331089
+Node: Distribution functions332205
+Node: Mathematical functions336093
+Node: Numerical Utilities337645
+Node: Mathematical constants340922
+Node: Optimization343342
+Node: Integration346047
+Node: Utility functions349062
+Node: Re-encoding353994
+Node: Allowing interrupts355527
+Node: Platform and version information356315
+Node: Inlining C functions357686
+Node: Controlling visibility358640
+Node: Standalone Mathlib360955
+Node: Organization of header files362246
+Node: Generic functions and methods365400
+Node: Adding new generics369308
+Node: Linking GUIs and other front-ends to R370956
+Node: Embedding R under Unix-alikes371748
+Ref: Embedding R under Unix-alikes-Footnote-1376628
+Ref: Embedding R under Unix-alikes-Footnote-2376744
+Node: Compiling against the R library376830
+Node: Setting R callbacks377507
+Node: Registering symbols384360
+Node: Meshing event loops385253
+Node: Threading issues388075
+Ref: Threading issues-Footnote-1389504
+Node: Embedding R under Windows389685
+Node: Using (D)COM390110
+Node: Calling R.dll directly391644
+Ref: Calling R.dll directly-Footnote-1397960
+Node: Function and variable index398109
+Node: Concept index425543
+
+End Tag Table

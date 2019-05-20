@@ -1,0 +1,3091 @@
+This is R-exts.info, produced by makeinfo version 4.7 from R-exts.texi.
+
+INFO-DIR-SECTION Programming
+START-INFO-DIR-ENTRY
+* R Extensions: (R-exts).      Writing R Extensions.
+END-INFO-DIR-ENTRY
+
+   This is a guide to extending R.
+
+   Copyright (C) 1999-2009 R Development Core Team
+
+   Permission is granted to make and distribute verbatim copies of this
+manual provided the copyright notice and this permission notice are
+preserved on all copies.
+
+   Permission is granted to copy and distribute modified versions of
+this manual under the conditions for verbatim copying, provided that the
+entire resulting derived work is distributed under the terms of a
+permission notice identical to this one.
+
+   Permission is granted to copy and distribute translations of this
+manual into another language, under the above conditions for modified
+versions, except that this permission notice may be stated in a
+translation approved by the R Development Core Team.
+
+
+File: R-exts.info,  Node: Calculating numerical derivatives,  Prev: Zero-finding,  Up: Evaluating R expressions from C
+
+5.11.2 Calculating numerical derivatives
+----------------------------------------
+
+We will use a longer example (by Saikat DebRoy) to illustrate the use of
+evaluation and `.External'.  This calculates numerical derivatives,
+something that could be done as effectively in interpreted R code but
+may be needed as part of a larger C calculation.
+
+   An interpreted R version and an example are
+
+     numeric.deriv <- function(expr, theta, rho=sys.frame(sys.parent()))
+     {
+       eps <- sqrt(.Machine$double.eps)
+       ans <- eval(substitute(expr), rho)
+       grad <- matrix(,length(ans), length(theta),
+                      dimnames=list(NULL, theta))
+       for (i in seq_along(theta)) {
+         old <- get(theta[i], envir=rho)
+         delta <- eps * min(1, abs(old))
+         assign(theta[i], old+delta, envir=rho)
+         ans1 <- eval(substitute(expr), rho)
+         assign(theta[i], old, envir=rho)
+         grad[, i] <- (ans1 - ans)/delta
+       }
+       attr(ans, "gradient") <- grad
+       ans
+     }
+     omega <- 1:5; x <- 1; y <- 2
+     numeric.deriv(sin(omega*x*y), c("x", "y"))
+
+where `expr' is an expression, `theta' a character vector of variable
+names and `rho' the environment to be used.
+
+   For the compiled version the call from R will be
+
+     .External("numeric_deriv", EXPR, THETA, RHO)
+
+with example usage
+
+     .External("numeric_deriv", quote(sin(omega*x*y)),
+               c("x", "y"), .GlobalEnv)
+
+Note the need to quote the expression to stop it being evaluated.
+
+   Here is the complete C code which we will explain section by section.
+
+     #include <R.h> /* for DOUBLE_EPS */
+     #include <Rinternals.h>
+
+     SEXP numeric_deriv(SEXP args)
+     {
+       SEXP theta, expr, rho, ans, ans1, gradient, par, dimnames;
+       double tt, xx, delta, eps = sqrt(DOUBLE_EPS), *rgr, *rans;
+       int start, i, j;
+
+       expr = CADR(args);
+       if(!isString(theta = CADDR(args)))
+         error("theta should be of type character");
+       if(!isEnvironment(rho = CADDDR(args)))
+         error("rho should be an environment");
+
+       PROTECT(ans = coerceVector(eval(expr, rho), REALSXP));
+       PROTECT(gradient = allocMatrix(REALSXP, LENGTH(ans), LENGTH(theta)));
+       rgr = REAL(gradient); rans = REAL(ans);
+
+       for(i = 0, start = 0; i < LENGTH(theta); i++, start += LENGTH(ans)) {
+         PROTECT(par = findVar(install(CHAR(STRING_ELT(theta, i))), rho));
+         tt = REAL(par)[0];
+         xx = fabs(tt);
+         delta = (xx < 1) ? eps : xx*eps;
+         REAL(par)[0] += delta;
+         PROTECT(ans1 = coerceVector(eval(expr, rho), REALSXP));
+         for(j = 0; j < LENGTH(ans); j++)
+           rgr[j + start] = (REAL(ans1)[j] - rans[j])/delta;
+         REAL(par)[0] = tt;
+         UNPROTECT(2); /* par, ans1 */
+       }
+
+       PROTECT(dimnames = allocVector(VECSXP, 2));
+       SET_VECTOR_ELT(dimnames, 1,  theta);
+       dimnamesgets(gradient, dimnames);
+       setAttrib(ans, install("gradient"), gradient);
+       UNPROTECT(3); /* ans  gradient  dimnames */
+       return ans;
+     }
+
+   The code to handle the arguments is
+
+       expr = CADR(args);
+       if(!isString(theta = CADDR(args)))
+         error("theta should be of type character");
+       if(!isEnvironment(rho = CADDDR(args)))
+         error("rho should be an environment");
+
+Note that we check for correct types of `theta' and `rho' but do not
+check the type of `expr'.  That is because `eval' can handle many types
+of R objects other than `EXPRSXP'.  There is no useful coercion we can
+do, so we stop with an error message if the arguments are not of the
+correct mode.
+
+   The first step in the code is to evaluate the expression in the
+environment `rho', by
+
+       PROTECT(ans = coerceVector(eval(expr, rho), REALSXP));
+
+We then allocate space for the calculated derivative by
+
+       PROTECT(gradient = allocMatrix(REALSXP, LENGTH(ans), LENGTH(theta)));
+
+The first argument to `allocMatrix' gives the `SEXPTYPE' of the matrix:
+here we want it to be `REALSXP'.  The other two arguments are the
+numbers of rows and columns.
+
+       for(i = 0, start = 0; i < LENGTH(theta); i++, start += LENGTH(ans)) {
+         PROTECT(par = findVar(install(CHAR(STRING_ELT(theta, i))), rho));
+
+Here, we are entering a for loop.  We loop through each of the
+variables.  In the `for' loop, we first create a symbol corresponding
+to the `i''th element of the `STRSXP' `theta'.  Here,
+`STRING_ELT(theta, i)' accesses the `i''th element of the `STRSXP'
+`theta'.  Macro `CHAR()' extracts the actual character
+representation(1) of it: it returns a pointer.  We then install the
+name and use `findVar' to find its value.
+
+         tt = REAL(par)[0];
+         xx = fabs(tt);
+         delta = (xx < 1) ? eps : xx*eps;
+         REAL(par)[0] += delta;
+         PROTECT(ans1 = coerceVector(eval(expr, rho), REALSXP));
+
+We first extract the real value of the parameter, then calculate
+`delta', the increment to be used for approximating the numerical
+derivative.  Then we change the value stored in `par' (in environment
+`rho') by `delta' and evaluate `expr' in environment `rho' again.
+Because we are directly dealing with original R memory locations here,
+R does the evaluation for the changed parameter value.
+
+         for(j = 0; j < LENGTH(ans); j++)
+           rgr[j + start] = (REAL(ans1)[j] - rans[j])/delta;
+         REAL(par)[0] = tt;
+         UNPROTECT(2);
+       }
+
+Now, we compute the `i''th column of the gradient matrix.  Note how it
+is accessed: R stores matrices by column (like FORTRAN).
+
+       PROTECT(dimnames = allocVector(VECSXP, 2));
+       SET_VECTOR_ELT(dimnames, 1, theta);
+       dimnamesgets(gradient, dimnames);
+       setAttrib(ans, install("gradient"), gradient);
+       UNPROTECT(3);
+       return ans;
+     }
+
+First we add column names to the gradient matrix.  This is done by
+allocating a list (a `VECSXP') whose first element, the row names, is
+`NULL' (the default) and the second element, the column names, is set
+as `theta'.  This list is then assigned as the attribute having the
+symbol `R_DimNamesSymbol'.  Finally we set the gradient matrix as the
+gradient attribute of `ans', unprotect the remaining protected
+locations and return the answer `ans'.
+
+   ---------- Footnotes ----------
+
+   (1) *note Character encoding issues:: for why this might not be what
+is required.
+
+
+File: R-exts.info,  Node: Parsing R code from C,  Next: External pointers and weak references,  Prev: Evaluating R expressions from C,  Up: System and foreign language interfaces
+
+5.12 Parsing R code from C
+==========================
+
+Suppose an R extension want to accept an R expression from the user and
+evaluate it.  The previous section covered evaluation, but the
+expression will be entered as text and needs to be parsed first.  A
+small part of R's parse interface is declared in header file
+`R_ext/Parse.h'(1).
+
+   An example of the usage can be found in the (example) Windows package
+*windlgs* included in the R source tree.  The essential part is
+
+     #include <R.h>
+     #include <Rinternals.h>
+     #include <R_ext/Parse.h>
+
+     SEXP menu_ttest3()
+     {
+         char cmd[256];
+         SEXP cmdSexp, cmdexpr, ans = R_NilValue;
+         int i;
+         ParseStatus status;
+        ...
+         if(done == 1) {
+             PROTECT(cmdSexp = allocVector(STRSXP, 1));
+             SET_STRING_ELT(cmdSexp, 0, mkChar(cmd));
+             cmdexpr = PROTECT(R_ParseVector(cmdSexp, -1, &status, R_NilValue));
+             if (status != PARSE_OK) {
+                 UNPROTECT(2);
+                 error("invalid call %s", cmd);
+             }
+             /* Loop is needed here as EXPSEXP will be of length > 1 */
+             for(i = 0; i < length(cmdexpr); i++)
+                 ans = eval(VECTOR_ELT(cmdexpr, i), R_GlobalEnv);
+             UNPROTECT(2);
+         }
+         return ans;
+     }
+Note that a single line of text may give rise to more than one R
+expression.
+
+   `R_ParseVector' is essentially the code used to implement
+`parse(text=)' at R level.  The first argument is a character vector
+(corresponding to `text') and the second the maximal number of
+expressions to parse (corresponding to `n').  The third argument is a
+pointer to a variable of an enumeration type, and it is normal (as
+`parse' does) to regard all values other than `PARSE_OK' as an error.
+Other values which might be returned are `PARSE_INCOMPLETE' (an
+incomplete expression was found) and `PARSE_ERROR' (a syntax error), in
+both cases the value returned being `R_NilValue'.  The fourth argument
+is a `srcfile' object or the R `NULL' object (as in the example above).
+In the former case a `srcref' attribute would be attached to the
+result, containing a list of `srcref' objects of the same length as the
+expression, to allow it to be echoed with its original formatting.
+
+   ---------- Footnotes ----------
+
+   (1) This is only guaranteed to show the current interface: it is
+liable to change.
+
+
+File: R-exts.info,  Node: External pointers and weak references,  Next: Vector accessor functions,  Prev: Parsing R code from C,  Up: System and foreign language interfaces
+
+5.13 External pointers and weak references
+==========================================
+
+The `SEXPTYPE's `EXTPTRSXP' and `WEAKREFSXP' can be encountered at R
+level, but are created in C code.
+
+   External pointer `SEXP's are intended to handle references to C
+structures such as `handles', and are used for this purpose in package
+*RODBC* for example.  They are unusual in their copying semantics in
+that when an R object is copied, the external pointer object is not
+duplicated.  (For this reason external pointers should only be used as
+part of an object with normal semantics, for example an attribute or an
+element of a list.)
+
+   An external pointer is created by
+
+     SEXP R_MakeExternalPtr(void *p, SEXP tag, SEXP prot);
+
+where `p' is the pointer (and hence this cannot portably be a function
+pointer), and `tag' and `prot' are references to ordinary R objects
+which will remain in existence (be protected from garbage collection)
+for the lifetime of the external pointer object.  A useful convention
+is to use the `tag' field for some form of type identification and the
+`prot' field for protecting the memory that the external pointer
+represents, if that memory is allocated from the R heap.  Both `tag'
+and `prot' can be `R_NilValue', and often are.
+
+   The elements of an external pointer can be accessed and set _via_
+
+     void *R_ExternalPtrAddr(SEXP s);
+     SEXP R_ExternalPtrTag(SEXP s);
+     SEXP R_ExternalPtrProtected(SEXP s);
+     void R_ClearExternalPtr(SEXP s);
+     void R_SetExternalPtrAddr(SEXP s, void *p);
+     void R_SetExternalPtrTag(SEXP s, SEXP tag);
+     void R_SetExternalPtrProtected(SEXP s, SEXP p);
+
+Clearing a pointer sets its value to the C `NULL' pointer.
+
+   An external pointer object can have a _finalizer_, a piece of code
+to be run when the object is garbage collected.  This can be R code or
+C code, and the various interfaces are, respectively.
+
+     void R_RegisterFinalizerEx(SEXP s, SEXP fun, Rboolean onexit);
+
+     typedef void (*R_CFinalizer_t)(SEXP);
+     void R_RegisterCFinalizerEx(SEXP s, R_CFinalizer_t fun, Rboolean onexit);
+
+The R function indicated by `fun' should be a function of a single
+argument, the object to be finalized.  R does not perform a garbage
+collection when shutting down, and the `onexit' argument of the
+extended forms can be used to ask that the finalizer be run during a
+normal shutdown of the R session.  It is suggested that it is good
+practice to clear the pointer on finalization.
+
+   The only R level function for interacting with external pointers is
+`reg.finalizer' which can be used to set a finalizer.
+
+   It is probably not a good idea to allow an external pointer to be
+`save'd and then reloaded, but if this happens the pointer will be set
+to the C `NULL' pointer.
+
+   Weak references are used to allow the programmer to maintain
+information on entities without preventing the garbage collection of
+the entities once they become unreachable.
+
+   A weak reference contains a key and a value.  The value is reachable
+is if it either reachable directly or _via_ weak references with
+reachable keys.  Once a value is determined to be unreachable during
+garbage collection, the key and value are set to `R_NilValue' and the
+finalizer will be run later in the garbage collection.
+
+   Weak reference objects are created by one of
+
+     SEXP R_MakeWeakRef(SEXP key, SEXP val, SEXP fin, Rboolean onexit);
+     SEXP R_MakeWeakRefC(SEXP key, SEXP val, R_CFinalizer_t fin,
+                         Rboolean onexit);
+
+where the R or C finalizer are specified in exactly the same way as for
+an external pointer object (whose finalization interface is implemented
+_via_ weak references).
+
+   The parts can be accessed _via_
+
+     SEXP R_WeakRefKey(SEXP w);
+     SEXP R_WeakRefValue(SEXP w);
+     void R_RunWeakRefFinalizer(SEXP w);
+
+   A toy example of the use of weak references can be found at
+`www.stat.uiowa.edu/~luke/R/references/weakfinex.html'
+(http://www.stat.uiowa.edu/~luke/R/references/weakfinex.html), but that
+is used to add finalizers to external pointers which can now be done
+more directly.  At the time of writing no CRAN or Bioconductor package
+uses weak references.
+
+* Menu:
+
+* An external pointer example::
+
+
+File: R-exts.info,  Node: An external pointer example,  Prev: External pointers and weak references,  Up: External pointers and weak references
+
+5.13.1 An example
+-----------------
+
+Package *RODBC* uses external pointers to maintain its _channels_,
+connections to databases.  There can be several connections open at
+once, and the status information for each is stored in a C structure
+(pointed to by `this_handle') in the code extract below) that is
+returned _via_ an external pointer as part of the RODBC `channel' (as
+the `"handle_ptr"' attribute).  The external pointer is created by
+
+         SEXP ans, ptr;
+         PROTECT(ans = allocVector(INTSXP, 1));
+         ptr = R_MakeExternalPtr(thisHandle, install("RODBC_channel"), R_NilValue);
+         PROTECT(ptr);
+         R_RegisterCFinalizerEx(ptr, chanFinalizer, TRUE);
+                 ...
+         /* return the channel no */
+         INTEGER(ans)[0] = nChannels;
+         /* and the connection string as an attribute */
+         setAttrib(ans, install("connection.string"), constr);
+         setAttrib(ans, install("handle_ptr"), ptr);
+         UNPROTECT(3);
+         return ans;
+
+Note the symbol given to identify the usage of the external pointer, and
+the use of the finalizer.  Since the final argument when registering the
+finalizer is `TRUE', the finalizer will be run at the the of the R
+session (unless it crashes).  This is used to close and clean up the
+connection to the database.  The finalizer code is simply
+
+     static void chanFinalizer(SEXP ptr)
+     {
+         if(!R_ExternalPtrAddr(ptr)) return;
+         inRODBCClose(R_ExternalPtrAddr(ptr));
+         R_ClearExternalPtr(ptr); /* not really needed */
+     }
+
+Clearing the pointer and checking for a `NULL' pointer avoids any
+possibility of attempting to close an already-closed channel.
+
+   R's connections provide another example of using external pointers,
+in that case purely to be able to use a finalizer to close and destroy
+the connection if it is no longer is use.
+
+
+File: R-exts.info,  Node: Vector accessor functions,  Next: Character encoding issues,  Prev: External pointers and weak references,  Up: System and foreign language interfaces
+
+5.14 Vector accessor functions
+==============================
+
+The vector accessors like `REAL' and `INTEGER' and `VECTOR_ELT' are
+_functions_ when used in R extensions.  (For efficiency they are macros
+when used in the R source code, apart from `SET_STRING_ELT' and
+`SET_VECTOR_ELT' which are always functions.)
+
+   The accessor functions check that they are being used on an
+appropriate type of `SEXP'.
+
+   If efficiency is essential, the macro versions of the accessors can
+be obtained by defining `USE_RINTERNALS' before including
+`Rinternals.h'.  If you find it necessary to do so, please do test that
+your code compiled without `USE_RINTERNALS' defined, as this provides a
+stricter test that the accessors have been used correctly.
+
+
+File: R-exts.info,  Node: Character encoding issues,  Prev: Vector accessor functions,  Up: System and foreign language interfaces
+
+5.15 Character encoding issues
+==============================
+
+As from R 2.5.0 `CHARSXP's can be marked as coming from a known
+encoding (Latin-1 or UTF-8).  This is mainly intended for human-readable
+output, and most packages can just treat such `CHARSXP's as a whole.
+However, if they need to be interpreted as characters or output at C
+level then it would normally be correct to ensure that they are
+converted to the encoding of the current locale: this can be done by
+accessing the data in the `CHARSXP' by `translateChar' rather than by
+`CHAR'.  If re-encoding is needed this allocates memory with `R_alloc'
+which thus persists to the end of the `.Call'/`.External' call unless
+`vmaxset' is used.
+
+   As from R 2.7.0 there is a similar function `translateCharUTF8'
+which converts to UTF-8: this has the advantage that a faithful
+translation is almost always possible (whereas only a few languages can
+be represented in the encoding of the current locale unless that is
+UTF-8).
+
+   As from R 2.7.0 there is a public interface to the encoding marked on
+`CHARXSXPs' _via_
+
+     typedef enum {CE_NATIVE, CE_UTF8, CE_LATIN1, CE_SYMBOL, CE_ANY} cetype_t;
+     cetype_t getCharCE(SEXP);
+     SEXP mkCharCE(const char *, cetype_t);
+
+Only the `CE_UTF8' and `CE_LATIN1' are marked on `CHARSXPs' (and so
+`Rf_getCharCE' will only return one of the first three), and these
+should only be used on non-ASCII strings.  Value `CE_SYMBOL' is used
+internally to indicate Adobe Symbol encoding.  Value `CE_ANY' is used
+to indicate a character string that will not need re-encoding - this is
+used for character strings known to be in ASCII, and can also be used
+as an input parameter where the intention is that the string is treated
+as a series of bytes.
+
+   Function
+
+     const char *reEnc(const char *x, cetype_t ce_in, cetype_t ce_out,
+                       int subst);
+
+can be used to re-encode character strings: like `translateChar' it
+returns a string allocated by `R_alloc'.  This can translate from
+`CE_SYMBOL' to `CE_UTF8', but not conversely.  Argument `subst'
+controls what to do with untranslatable characters or invalid input:
+this is done byte-by-byte with `1' indicates to output hex of the form
+`<a0>', and `2' to replace by `.', with any other value causing the
+byte to produce no output.
+
+   R 2.8.0 added
+
+     SEXP mkCharLenCE(const char *, int, cetype_t);
+
+to create marked character strings of a given length.
+
+
+File: R-exts.info,  Node: The R API,  Next: Generic functions and methods,  Prev: System and foreign language interfaces,  Up: Top
+
+6 The R API: entry points for C code
+************************************
+
+* Menu:
+
+* Memory allocation::
+* Error handling::
+* Random numbers::
+* Missing and IEEE values::
+* Printing::
+* Calling C from FORTRAN and vice versa::
+* Numerical analysis subroutines::
+* Optimization::
+* Integration::
+* Utility functions::
+* Re-encoding::
+* Allowing interrupts::
+* Platform and version information::
+* Inlining C functions::
+* Controlling visibility::
+* Standalone Mathlib::
+* Organization of header files::
+
+   There are a large number of entry points in the R executable/DLL that
+can be called from C code (and some that can be called from FORTRAN
+code).  Only those documented here are stable enough that they will only
+be changed with considerable notice.
+
+   The recommended procedure to use these is to include the header file
+`R.h' in your C code by
+
+     #include <R.h>
+
+This will include several other header files from the directory
+`R_INCLUDE_DIR/R_ext', and there are other header files there that can
+be included too, but many of the features they contain should be
+regarded as undocumented and unstable.
+
+   An alternative is to include the header file `S.h', which may be
+useful when porting code from S.  This includes rather less than `R.h',
+and has extra some compatibility definitions (for example the
+`S_complex' type from S).
+
+   The defines used for compatibility with S sometimes causes conflicts
+(notably with Windows headers), and the known problematic defines can
+be removed by defining `STRICT_R_HEADERS'.
+
+   Most of these header files, including all those included by `R.h',
+can be used from C++ code.  Some others need to be included within an
+`extern "C"' declaration, and for clarity this is advisable for all R
+header files.
+
+     Note: Because R re-maps many of its external names to avoid
+     clashes with user code, it is _essential_ to include the
+     appropriate header files when using these entry points.
+
+   This remapping can cause problems(1), and can be eliminated by
+defining `R_NO_REMAP' and prepending `Rf_' to _all_ the function names
+used from `Rinternals.h' and `R_ext/Error.h'.
+
+   We can classify the entry points as
+
+_API_
+     Entry points which are documented in this manual and declared in an
+     installed header file.  These can be used in distributed packages
+     and will only be changed after deprecation.
+
+_public_
+     Entry points declared in an installed header file that are exported
+     on all R platforms but are not documented and subject to change
+     without notice.
+
+_private_
+     Entry points that are used when building R and exported on all R
+     platforms but are not declared in the installed header files.  Do
+     not use these in distributed code.
+
+_hidden_
+     Entry points that are where possible (Windows and some modern Unix
+     compilers/loaders when using R as a shared library) not exported.
+
+   ---------- Footnotes ----------
+
+   (1) Known problems are redefining `error', `length', `vector' and
+`warning'
+
+
+File: R-exts.info,  Node: Memory allocation,  Next: Error handling,  Prev: The R API,  Up: The R API
+
+6.1 Memory allocation
+=====================
+
+* Menu:
+
+* Transient::
+* User-controlled::
+
+   There are two types of memory allocation available to the C
+programmer, one in which R manages the clean-up and the other in which
+user has full control (and responsibility).
+
+
+File: R-exts.info,  Node: Transient,  Next: User-controlled,  Prev: Memory allocation,  Up: Memory allocation
+
+6.1.1 Transient storage allocation
+----------------------------------
+
+Here R will reclaim the memory at the end of the call to `.C'.  Use
+
+     char *R_alloc(size_t N, int SIZE)
+
+which allocates N units of SIZE bytes each.  A typical usage (from
+package *stats*) is
+
+     x = (int *) R_alloc(nrows(merge)+2, sizeof(int));
+
+(`size_t' is defined in `stddef.h' which the header defining `R_alloc'
+includes.)
+
+   There is a similar call, `S_alloc' (for compatibility with older
+versions of S) which zeroes the memory allocated,
+
+     char *S_alloc(long N, int SIZE)
+
+and
+
+     char *S_realloc(char *P, long NEW, long OLD, int SIZE)
+
+which changes the allocation size from OLD to NEW units, and zeroes the
+additional units.
+
+   For compatibility with current versions of S, header `S.h' (only)
+defines wrapper macros equivalent to
+
+     type* Salloc(long N, int TYPE)
+     type* Srealloc(char *P, long NEW, long OLD, int TYPE)
+
+   This memory is taken from the heap, and released at the end of the
+`.C', `.Call' or `.External' call.  Users can also manage it, by noting
+the current position with a call to `vmaxget' and clearing memory
+allocated subsequently by a call to `vmaxset'.  This is only
+recommended for experts.
+
+   Note that this memory will be freed on error or user interrupt (if
+allowed: *note Allowing interrupts::).
+
+   Note that although N is `long', there are limits imposed by R's
+internal allocation mechanism.  These will only come into play on
+64-bit systems, where the current limit for N is just under 16Gb.
+
+
+File: R-exts.info,  Node: User-controlled,  Prev: Transient,  Up: Memory allocation
+
+6.1.2 User-controlled memory
+----------------------------
+
+The other form of memory allocation is an interface to `malloc', the
+interface providing R error handling.  This memory lasts until freed by
+the user and is additional to the memory allocated for the R workspace.
+
+   The interface functions are
+
+     TYPE* Calloc(size_t N, TYPE)
+     TYPE* Realloc(ANY *P, size_t N, TYPE)
+     void Free(ANY *P)
+
+providing analogues of `calloc', `realloc' and `free'.  If there is an
+error during allocation it is handled by R, so if these routines return
+the memory has been successfully allocated or freed.  `Free' will set
+the pointer P to `NULL'.  (Some but not all versions of S do so.)
+
+   Users should arrange to `Free' this memory when no longer needed,
+including on error or user interrupt.  This can often be done most
+conveniently from an `on.exit' action in the calling R function - see
+`pwilcox' for an example.
+
+   Do not assume that memory allocated by `Calloc'/`Realloc' comes from
+the same pool as used by `malloc': in particular do not use `free' or
+`strdup' with it.
+
+   These entry points need to be prefixed by `R_' if `STRICT_R_HEADERS'
+has been defined.
+
+
+File: R-exts.info,  Node: Error handling,  Next: Random numbers,  Prev: Memory allocation,  Up: The R API
+
+6.2 Error handling
+==================
+
+The basic error handling routines are the equivalents of `stop' and
+`warning' in R code, and use the same interface.
+
+     void error(const char * FORMAT, ...);
+     void warning(const char * FORMAT, ...);
+
+These have the same call sequences as calls to `printf', but in the
+simplest case can be called with a single character string argument
+giving the error message. (Don't do this if the string contains `%' or
+might otherwise be interpreted as a format.)
+
+   If `STRICT_R_HEADERS' is not defined there is also an
+S-compatibility interface which uses calls of the form
+
+     PROBLEM ...... ERROR
+     MESSAGE ...... WARN
+     PROBLEM ...... RECOVER(NULL_ENTRY)
+     MESSAGE ...... WARNING(NULL_ENTRY)
+
+the last two being the forms available in all S versions.  Here
+`......' is a set of arguments to `printf', so can be a string or a
+format string followed by arguments separated by commas.
+
+* Menu:
+
+* Error handling from FORTRAN::
+
+
+File: R-exts.info,  Node: Error handling from FORTRAN,  Prev: Error handling,  Up: Error handling
+
+6.2.1 Error handling from FORTRAN
+---------------------------------
+
+There are two interface function provided to call `error' and `warning'
+from FORTRAN code, in each case with a simple character string
+argument.  They are defined as
+
+     subroutine rexit(MESSAGE)
+     subroutine rwarn(MESSAGE)
+
+   Messages of more than 255 characters are truncated, with a warning.
+
+
+File: R-exts.info,  Node: Random numbers,  Next: Missing and IEEE values,  Prev: Error handling,  Up: The R API
+
+6.3 Random number generation
+============================
+
+The interface to R's internal random number generation routines is
+
+     double unif_rand();
+     double norm_rand();
+     double exp_rand();
+
+giving one uniform, normal or exponential pseudo-random variate.
+However, before these are used, the user must call
+
+     GetRNGstate();
+
+and after all the required variates have been generated, call
+
+     PutRNGstate();
+
+These essentially read in (or create) `.Random.seed' and write it out
+after use.
+
+   File `S.h' defines `seed_in' and `seed_out' for S-compatibility
+rather than `GetRNGstate' and `PutRNGstate'.  These take a `long *'
+argument which is ignored.
+
+   The random number generator is private to R; there is no way to
+select the kind of RNG or set the seed except by evaluating calls to the
+R functions.
+
+   The C code behind R's `rXXX' functions can be accessed by including
+the header file `Rmath.h'; *Note Distribution functions::.  Those calls
+generate a single variate and should also be enclosed in calls to
+`GetRNGstate' and `PutRNGstate'.
+
+   In addition, there is an interface (defined in header
+`R_ext/Applic.h') to the generation of random 2-dimensional tables with
+given row and column totals using Patefield's algorithm.
+
+ -- Function: void rcont2 (int* NROW, int* NCOL, int* NROWT, int*
+          NCOLT, int* NTOTAL, double* FACT, int* JWORK, int* MATRIX)
+     Here, NROW and NCOL give the numbers nr and nc of rows and columns
+     and NROWT and NCOLT the corresponding row and column totals,
+     respectively, NTOTAL gives the sum of the row (or columns) totals,
+     JWORK is a workspace of length nc, and on output MATRIX a contains
+     the nr * nc generated random counts in the usual column-major
+     order.
+
+
+File: R-exts.info,  Node: Missing and IEEE values,  Next: Printing,  Prev: Random numbers,  Up: The R API
+
+6.4 Missing and IEEE special values
+===================================
+
+A set of functions is provided to test for `NA', `Inf', `-Inf' and
+`NaN'.  These functions are accessed _via_ macros:
+
+     ISNA(X)        True for R's `NA' only
+     ISNAN(X)       True for R's `NA' and IEEE `NaN'
+     R_FINITE(X)    False for `Inf', `-Inf', `NA', `NaN'
+
+and _via_ function `R_IsNaN' which is true for `NaN' but not `NA'.
+
+   Do use `R_FINITE' rather than `isfinite' or `finite'; the latter is
+often mendacious and `isfinite' is only available on a few platforms,
+on which `R_FINITE' is a macro expanding to `isfinite'.
+
+   Currently in C code `ISNAN' is a macro calling `isnan'.  (Since this
+gives problems on some C++ systems, if the R headers is called from C++
+code a function call is used.)
+
+   You can check for `Inf' or `-Inf' by testing equality to `R_PosInf'
+or `R_NegInf', and set (but not test) an `NA' as `NA_REAL'.
+
+   All of the above apply to _double_ variables only.  For integer
+variables there is a variable accessed by the macro `NA_INTEGER' which
+can used to set or test for missingness.
+
+
+File: R-exts.info,  Node: Printing,  Next: Calling C from FORTRAN and vice versa,  Prev: Missing and IEEE values,  Up: The R API
+
+6.5 Printing
+============
+
+The most useful function for printing from a C routine compiled into R
+is `Rprintf'.  This is used in exactly the same way as `printf', but is
+guaranteed to write to R's output (which might be a GUI console rather
+than a file).  It is wise to write complete lines (including the
+`"\n"') before returning to R.
+
+   The function `REprintf' is similar but writes on the error stream
+(`stderr') which may or may not be different from the standard output
+stream.  Functions `Rvprintf' and `REvprintf' are analogues using the
+`vprintf' interface.
+
+* Menu:
+
+* Printing from FORTRAN::
+
+
+File: R-exts.info,  Node: Printing from FORTRAN,  Prev: Printing,  Up: Printing
+
+6.5.1 Printing from FORTRAN
+---------------------------
+
+On many systems FORTRAN `write' and `print' statements can be used, but
+the output may not interleave well with that of C, and will be
+invisible on GUI interfaces.  They are not portable and best avoided.
+
+   Three subroutines are provided to ease the output of information from
+FORTRAN code.
+
+     subroutine dblepr(LABEL, NCHAR, DATA, NDATA)
+     subroutine realpr(LABEL, NCHAR, DATA, NDATA)
+     subroutine intpr (LABEL, NCHAR, DATA, NDATA)
+
+Here LABEL is a character label of up to 255 characters, NCHAR is its
+length (which can be `-1' if the whole label is to be used), and DATA
+is an array of length at least NDATA of the appropriate type (`double
+precision', `real' and `integer' respectively).  These routines print
+the label on one line and then print DATA as if it were an R vector on
+subsequent line(s).  They work with zero NDATA, and so can be used to
+print a label alone.
+
+
+File: R-exts.info,  Node: Calling C from FORTRAN and vice versa,  Next: Numerical analysis subroutines,  Prev: Printing,  Up: The R API
+
+6.6 Calling C from FORTRAN and vice versa
+=========================================
+
+Naming conventions for symbols generated by FORTRAN differ by platform:
+it is not safe to assume that FORTRAN names appear to C with a trailing
+underscore.  To help cover up the platform-specific differences there is
+a set of macros that should be used.
+
+`F77_SUB(NAME)'
+     to define a function in C to be called from FORTRAN
+
+`F77_NAME(NAME)'
+     to declare a FORTRAN routine in C before use
+
+`F77_CALL(NAME)'
+     to call a FORTRAN routine from C
+
+`F77_COMDECL(NAME)'
+     to declare a FORTRAN common block in C
+
+`F77_COM(NAME)'
+     to access a FORTRAN common block from C
+
+   On most current platforms these are all the same, but it is unwise to
+rely on this.  Note that names with underscores are not legal in FORTRAN
+77, and are not portably handled by the above macros.  (Also, all
+FORTRAN names for use by R are lower case, but this is not enforced by
+the macros.)
+
+   For example, suppose we want to call R's normal random numbers from
+FORTRAN.  We need a C wrapper along the lines of
+
+     #include <R.h>
+
+     void F77_SUB(rndstart)(void) { GetRNGstate(); }
+     void F77_SUB(rndend)(void) { PutRNGstate(); }
+     double F77_SUB(normrnd)(void) { return norm_rand(); }
+
+to be called from FORTRAN as in
+
+           subroutine testit()
+           double precision normrnd, x
+           call rndstart()
+           x = normrnd()
+           call dblepr("X was", 5, x, 1)
+           call rndend()
+           end
+
+Note that this is not guaranteed to be portable, for the return
+conventions might not be compatible between the C and FORTRAN compilers
+used.  (Passing values _via_ arguments is safer.)
+
+   The standard packages, for example *stats*, are a rich source of
+further examples.
+
+
+File: R-exts.info,  Node: Numerical analysis subroutines,  Next: Optimization,  Prev: Calling C from FORTRAN and vice versa,  Up: The R API
+
+6.7 Numerical analysis subroutines
+==================================
+
+R contains a large number of mathematical functions for its own use,
+for example numerical linear algebra computations and special functions.
+
+   The header files `R_ext/BLAS.h', `R_ext/Lapack.h' and
+`R_ext/Linpack.h' contains declarations of the BLAS, LAPACK and
+LINPACK/EISPACK linear algebra functions included in R.  These are
+expressed as calls to FORTRAN subroutines, and they will also be usable
+from users' FORTRAN code.  Although not part of the official API, this
+set of subroutines is unlikely to change (but might be supplemented).
+
+   The header file `Rmath.h' lists many other functions that are
+available and documented in the following subsections. Many of these are
+C interfaces to the code behind R functions, so the R function
+documentation may give further details.
+
+* Menu:
+
+* Distribution functions::
+* Mathematical functions::
+* Numerical Utilities::
+* Mathematical constants::
+
+
+File: R-exts.info,  Node: Distribution functions,  Next: Mathematical functions,  Prev: Numerical analysis subroutines,  Up: Numerical analysis subroutines
+
+6.7.1 Distribution functions
+----------------------------
+
+The routines used to calculate densities, cumulative distribution
+functions and quantile functions for the standard statistical
+distributions are available as entry points.
+
+   The arguments for the entry points follow the pattern of those for
+the normal distribution:
+
+     double dnorm(double X, double MU, double SIGMA, int GIVE_LOG);
+     double pnorm(double X, double MU, double SIGMA, int LOWER_TAIL,
+                  int GIVE_LOG);
+     double qnorm(double P, double MU, double SIGMA, int LOWER_TAIL,
+                  int LOG_P);
+     double rnorm(double MU, double SIGMA);
+
+That is, the first argument gives the position for the density and CDF
+and probability for the quantile function, followed by the
+distribution's parameters.  Argument LOWER_TAIL should be `TRUE' (or
+`1') for normal use, but can be `FALSE' (or `0') if the probability of
+the upper tail is desired or specified.
+
+   Finally, GIVE_LOG should be non-zero if the result is required on
+log scale, and LOG_P should be non-zero if P has been specified on log
+scale.
+
+   Note that you directly get the cumulative (or "integrated") _hazard_
+function, H(t) = - log(1 - F(t)), by using
+
+     - pDIST(t, ..., /*lower_tail = */ FALSE, /* give_log = */ TRUE)
+
+or shorter (and more cryptic) `- pDIST(t, ..., 0, 1)'.  
+
+   The random-variate generation routine `rnorm' returns one normal
+variate. *Note Random numbers::, for the protocol in using the
+random-variate routines.  
+
+   Note that these argument sequences are (apart from the names and that
+`rnorm' has no N) mainly the same as the corresponding R functions of
+the same name, so the documentation of the R functions can be used.
+Note that the exponential and gamma distributions are parametrized by
+`scale' rather than `rate'.
+
+   For reference, the following table gives the basic name (to be
+prefixed by `d', `p', `q' or `r' apart from the exceptions noted) and
+distribution-specific arguments for the complete set of distributions.
+
+     beta                `beta'          `a', `b'
+     non-central beta    `nbeta'         `a', `b', `ncp'
+     binomial            `binom'         `n', `p'
+     Cauchy              `cauchy'        `location', `scale'
+     chi-squared         `chisq'         `df'
+     non-central         `nchisq'        `df', `ncp'
+     chi-squared                         
+     exponential         `exp'           `scale' (and *not*
+                                         `rate')
+     F                   `f'             `n1', `n2'
+     non-central F       `nf'            `n1', `n2', `ncp'
+     gamma               `gamma'         `shape', `scale'
+     geometric           `geom'          `p'
+     hypergeometric      `hyper'         `NR', `NB', `n'
+     logistic            `logis'         `location', `scale'
+     lognormal           `lnorm'         `logmean', `logsd'
+     negative binomial   `nbinom'        `size', `prob'
+     normal              `norm'          `mu', `sigma'
+     Poisson             `pois'          `lambda'
+     Student's t         `t'             `n'
+     non-central t       `nt'            `df', `delta'
+     Studentized range   `tukey' (*)     `rr', `cc', `df'
+     uniform             `unif'          `a', `b'
+     Weibull             `weibull'       `shape', `scale'
+     Wilcoxon rank sum   `wilcox'        `m', `n'
+     Wilcoxon signed     `signrank'      `n'
+     rank                                
+
+Entries marked with an asterisk only have `p' and `q' functions
+available, and none of the non-central distributions have `r'
+functions.  After a call to `dwilcox', `pwilcox' or `qwilcox' the
+function `wilcox_free()' should be called, and similarly for the signed
+rank functions.
+
+
+File: R-exts.info,  Node: Mathematical functions,  Next: Numerical Utilities,  Prev: Distribution functions,  Up: Numerical analysis subroutines
+
+6.7.2 Mathematical functions
+----------------------------
+
+ -- Function: double gammafn (double X)
+ -- Function: double lgammafn (double X)
+ -- Function: double digamma (double X)
+ -- Function: double trigamma (double X)
+ -- Function: double tetragamma (double X)
+ -- Function: double pentagamma (double X)
+ -- Function: double psigamma (double X, double DERIV)
+     The Gamma function, the natural logarithm of its absolute value and
+     first four derivatives and the n-th derivative of Psi, the digamma
+     function.
+
+ -- Function: double beta (double A, double B)
+ -- Function: double lbeta (double A, double B)
+     The (complete) Beta function and its natural logarithm.
+
+ -- Function: double choose (double N, double K)
+ -- Function: double lchoose (double N, double K)
+     The number of combinations of K items chosen from from N and its
+     natural logarithm.  K is rounded to the nearest integer (with a
+     warning if needed).
+
+ -- Function: double bessel_i (double X, double NU, double EXPO)
+ -- Function: double bessel_j (double X, double NU)
+ -- Function: double bessel_k (double X, double NU, double EXPO)
+ -- Function: double bessel_y (double X, double NU)
+     Bessel functions of types I, J, K and Y with index NU.  For
+     `bessel_i' and `bessel_k' there is the option to return
+     exp(-X) I(X; NU) or exp(X) K(X; NU) if EXPO is 2. (Use `EXPO == 1'
+     for unscaled values.)
+
+
+File: R-exts.info,  Node: Numerical Utilities,  Next: Mathematical constants,  Prev: Mathematical functions,  Up: Numerical analysis subroutines
+
+6.7.3 Numerical Utilities
+-------------------------
+
+There are a few other numerical utility functions available as entry
+points.
+
+ -- Function: double R_pow (double X, double Y)
+ -- Function: double R_pow_di (double X, int I)
+     `R_pow(X, Y)' and `R_pow_di(X, I)' compute `X^Y' and `X^I',
+     respectively using `R_FINITE' checks and returning the proper
+     result (the same as R) for the cases where X, Y or I are 0 or
+     missing or infinite or `NaN'.
+
+ -- Function: double pythag (double A, double B)
+     `pythag(A, B)' computes `sqrt(A^2 + B^2)' without overflow or
+     destructive underflow: for example it still works when both A and
+     B are between `1e200' and `1e300' (in IEEE double precision).
+
+ -- Function: double log1p (double X)
+     Computes `log(1 + X)' (_log 1 plus x_), accurately even for small
+     X, i.e., |x| << 1.
+
+     This may be provided by your platform, in which case it is not
+     included in `Rmath.h', but is (probably) in `math.h' which
+     `Rmath.h' includes.  For backwards compatibility with R versions
+     prior to 1.5.0, the entry point `Rf_log1p' is still provided.
+
+ -- Function: double log1pmx (double X)
+     Computes `log(1 + X) - X' (_log 1 plus x minus x_), accurately
+     even for small X, i.e., |x| << 1.
+
+ -- Function: double expm1 (double X)
+     Computes `exp(X) - 1' (_exp x minus 1_), accurately even for small
+     X, i.e., |x| << 1.
+
+     This may be provided by your platform, in which case it is not
+     included in `Rmath.h', but is (probably) in `math.h' which
+     `Rmath.h' includes.
+
+ -- Function: double lgamma1p (double X)
+     Computes `log(gamma(X + 1))' (_log(gamma(1 plus x))_), accurately
+     even for small X, i.e., 0 < x < 0.5.
+
+ -- Function: double logspace_add (double LOGX, double LOGY)
+ -- Function: double logspace_sub (double LOGX, double LOGY)
+     Compute the log of a sum or difference from logs of terms, i.e.,
+     "x + y" as `log (exp(LOGX) + exp(LOGY))' and "x - y" as `log
+     (exp(LOGX) - exp(LOGY))', without causing overflows or throwing
+     away too much accuracy.
+
+ -- Function: int imax2 (int X, int Y)
+ -- Function: int imin2 (int X, int Y)
+ -- Function: double fmax2 (double X, double Y)
+ -- Function: double fmin2 (double X, double Y)
+     Return the larger (`max') or smaller (`min') of two integer or
+     double numbers, respectively.
+
+ -- Function: double sign (double X)
+     Compute the _signum_ function, where sign(X) is 1, 0, or -1, when
+     X is positive, 0, or negative, respectively.
+
+ -- Function: double fsign (double X, double Y)
+     Performs "transfer of sign" and is defined as |x| * sign(y).
+
+ -- Function: double fprec (double X, double DIGITS)
+     Returns the value of X rounded to DIGITS decimal digits (after the
+     decimal point).
+
+     This is the function used by R's `round()'.
+
+ -- Function: double fround (double X, double DIGITS)
+     Returns the value of X rounded to DIGITS _significant_ decimal
+     digits.
+
+     This is the function used by R's `signif()'.
+
+ -- Function: double ftrunc (double X)
+     Returns the value of X truncated (to an integer value) towards
+     zero.
+
+
+File: R-exts.info,  Node: Mathematical constants,  Prev: Numerical Utilities,  Up: Numerical analysis subroutines
+
+6.7.4 Mathematical constants
+----------------------------
+
+R has a set of commonly used mathematical constants encompassing
+constants usually found `math.h' and contains further ones that are
+used in statistical computations.  All these are defined to (at least)
+30 digits accuracy in `Rmath.h'.  The following definitions use `ln(x)'
+for the natural logarithm (`log(x)' in R).
+
+     Name               Definition (`ln = log')    round(_value_, 7)
+     ------------------------------------------------------------------------- 
+     `M_E'              e                          2.7182818
+     `M_LOG2E'          log2(e)                    1.4426950
+     `M_LOG10E'         log10(e)                   0.4342945
+     `M_LN2'            ln(2)                      0.6931472
+     `M_LN10'           ln(10)                     2.3025851
+     `M_PI'             pi                         3.1415927
+     `M_PI_2'           pi/2                       1.5707963
+     `M_PI_4'           pi/4                       0.7853982
+     `M_1_PI'           1/pi                       0.3183099
+     `M_2_PI'           2/pi                       0.6366198
+     `M_2_SQRTPI'       2/sqrt(pi)                 1.1283792
+     `M_SQRT2'          sqrt(2)                    1.4142136
+     `M_SQRT1_2'        1/sqrt(2)                  0.7071068
+     `M_SQRT_3'         sqrt(3)                    1.7320508
+     `M_SQRT_32'        sqrt(32)                   5.6568542
+     `M_LOG10_2'        log10(2)                   0.3010300
+     `M_2PI'            2*pi                       6.2831853
+     `M_SQRT_PI'        sqrt(pi)                   1.7724539
+     `M_1_SQRT_2PI'     1/sqrt(2*pi)               0.3989423
+     `M_SQRT_2dPI'      sqrt(2/pi)                 0.7978846
+     `M_LN_SQRT_PI'     ln(sqrt(pi))               0.5723649
+     `M_LN_SQRT_2PI'    ln(sqrt(2*pi))             0.9189385
+     `M_LN_SQRT_PId2'   ln(sqrt(pi/2))             0.2257914
+
+   There are a set of constants (`PI', `DOUBLE_EPS') (and so on)
+defined (unless `STRICT_R_HEADERS' is defined) in the included header
+`R_ext/Constants.h', mainly for compatibility with S.
+
+   Further, the included header `R_ext/Boolean.h' has constants `TRUE'
+and `FALSE = 0' of type `Rboolean' in order to provide a way of using
+"logical" variables in C consistently.
+
+
+File: R-exts.info,  Node: Optimization,  Next: Integration,  Prev: Numerical analysis subroutines,  Up: The R API
+
+6.8 Optimization
+================
+
+The C code underlying `optim' can be accessed directly.  The user needs
+to supply a function to compute the function to be minimized, of the
+type
+
+     typedef double optimfn(int n, double *par, void *ex);
+
+where the first argument is the number of parameters in the second
+argument.  The third argument is a pointer passed down from the calling
+routine, normally used to carry auxiliary information.
+
+   Some of the methods also require a gradient function
+
+     typedef void optimgr(int n, double *par, double *gr, void *ex);
+
+which passes back the gradient in the `gr' argument.  No function is
+provided for finite-differencing, nor for approximating the Hessian at
+the result.
+
+   The interfaces (defined in header `R_ext/Applic.h') are
+
+   * Nelder Mead: 
+          void nmmin(int n, double *xin, double *x, double *Fmin, optimfn fn,
+                     int *fail, double abstol, double intol, void *ex,
+                     double alpha, double beta, double gamma, int trace,
+                     int *fncount, int maxit);
+
+   * BFGS: 
+          void vmmin(int n, double *x, double *Fmin,
+                     optimfn fn, optimgr gr, int maxit, int trace,
+                     int *mask, double abstol, double reltol, int nREPORT,
+                     void *ex, int *fncount, int *grcount, int *fail);
+
+   * Conjugate gradients: 
+          void cgmin(int n, double *xin, double *x, double *Fmin,
+                     optimfn fn, optimgr gr, int *fail, double abstol,
+                     double intol, void *ex, int type, int trace,
+                     int *fncount, int *grcount, int maxit);
+
+   * Limited-memory BFGS with bounds: 
+          void lbfgsb(int n, int lmm, double *x, double *lower,
+                      double *upper, int *nbd, double *Fmin, optimfn fn,
+                      optimgr gr, int *fail, void *ex, double factr,
+                      double pgtol, int *fncount, int *grcount,
+                      int maxit, char *msg, int trace, int nREPORT);
+
+   * Simulated annealing: 
+          void samin(int n, double *x, double *Fmin, optimfn fn, int maxit,
+                     int tmax, double temp, int trace, void *ex);
+
+
+Many of the arguments are common to the various methods.  `n' is the
+number of parameters, `x' or `xin' is the starting parameters on entry
+and `x' the final parameters on exit, with final value returned in
+`Fmin'.  Most of the other parameters can be found from the help page
+for `optim': see the source code `src/appl/lbfgsb.c' for the values of
+`nbd', which specifies which bounds are to be used.
+
+
+File: R-exts.info,  Node: Integration,  Next: Utility functions,  Prev: Optimization,  Up: The R API
+
+6.9 Integration
+===============
+
+The C code underlying `integrate' can be accessed directly.  The user
+needs to supply a _vectorizing_ C function to compute the function to
+be integrated, of the type
+
+     typedef void integr_fn(double *x, int n, void *ex);
+
+where `x[]' is both input and output and has length `n', i.e., a C
+function, say `fn', of type `integr_fn' must basically do `for(i in
+1:n) x[i] := f(x[i], ex)'.  The vectorization requirement can be used
+to speed up the integrand instead of calling it `n' times.  Note that
+in the current implementation built on QUADPACK, `n' will be either 15
+or 21.  The `ex' argument is a pointer passed down from the calling
+routine, normally used to carry auxiliary information.
+
+   There are interfaces (defined in header `R_ext/Applic.h') for
+definite and for indefinite integrals.  `Indefinite' means that at least
+one of the integration boundaries is not finite.
+
+   * Finite: 
+          void Rdqags(integr_fn f, void *ex, double *a, double *b,
+                      double *epsabs, double *epsrel,
+                      double *result, double *abserr, int *neval, int *ier,
+                      int *limit, int *lenw, int *last,
+                      int *iwork, double *work);
+
+   * Indefinite: 
+          void Rdqagi(integr_fn f, void *ex, double *bound, int *inf,
+                      double *epsabs, double *epsrel,
+                      double *result, double *abserr, int *neval, int *ier,
+                      int *limit, int *lenw, int *last,
+                      int *iwork, double *work);
+
+
+Only the 3rd and 4th argument differ for the two integrators; for the
+definite integral, using `Rdqags', `a' and `b' are the integration
+interval bounds, whereas for an indefinite integral, using `Rdqagi',
+`bound' is the finite bound of the integration (if the integral is not
+doubly-infinite) and `inf' is a code indicating the kind of integration
+range,
+
+`inf = 1'
+     corresponds to (bound, +Inf),
+
+`inf = -1'
+     corresponds to (-Inf, bound),
+
+`inf = 2'
+     corresponds to (-Inf, +Inf),
+
+   `f' and `ex' define the integrand function, see above; `epsabs' and
+`epsrel' specify the absolute and relative accuracy requested,
+`result', `abserr' and `last' are the output components `value',
+`abs.err' and `subdivisions' of the R function integrate, where `neval'
+gives the number of integrand function evaluations, and the error code
+`ier' is translated to R's `integrate() $ message', look at that
+function definition.  `limit' corresponds to `integrate(...,
+subdivisions = *)'.  It seems you should always define the two work
+arrays and the length of the second one as
+
+         lenw = 4 * limit;
+         iwork =   (int *) R_alloc(limit, sizeof(int));
+         work = (double *) R_alloc(lenw,  sizeof(double));
+
+   The comments in the source code in `src/appl/integrate.c' give more
+details, particularly about reasons for failure (`ier >= 1').
+
+
+File: R-exts.info,  Node: Utility functions,  Next: Re-encoding,  Prev: Integration,  Up: The R API
+
+6.10 Utility functions
+======================
+
+R has a fairly comprehensive set of sort routines which are made
+available to users' C code.  These are declared in header file
+`R_ext/Utils.h' (included by `R.h') and include the following.
+
+ -- Function: void R_isort (int* X, int N)
+ -- Function: void R_rsort (double* X, int N)
+ -- Function: void R_csort (Rcomplex* X, int N)
+ -- Function: void rsort_with_index (double* X, int* INDEX, int N)
+     The first three sort integer, real (double) and complex data
+     respectively.  (Complex numbers are sorted by the real part first
+     then the imaginary part.)  `NA's are sorted last.
+
+     `rsort_with_index' sorts on X, and applies the same permutation to
+     INDEX.  `NA's are sorted last.
+
+ -- Function: void revsort (double* X, int* INDEX, int N)
+     Is similar to `rsort_with_index' but sorts into decreasing order,
+     and `NA's are not handled.
+
+ -- Function: void iPsort (int* X, int N, int K)
+ -- Function: void rPsort (double* X, int N, int K)
+ -- Function: void cPsort (Rcomplex* X, int N, int K)
+     These all provide (very) partial sorting: they permute X so that
+     `X[K]' is in the correct place with smaller values to the left,
+     larger ones to the right.
+
+ -- Function: void R_qsort (double *V, int I, int J)
+ -- Function: void R_qsort_I (double *V, int *I, int I, int J)
+ -- Function: void R_qsort_int (int *IV, int I, int J)
+ -- Function: void R_qsort_int_I (int *IV, int *I, int I, int J)
+     These routines sort `V[I:J]' or `IV[I:J]' (using 1-indexing, i.e.,
+     `V[1]' is the first element) calling the quicksort algorithm as
+     used by R's `sort(v, method = "quick")' and documented on the help
+     page for the R function `sort'.  The `..._I()' versions also
+     return the `sort.index()' vector in `I'.  Note that the ordering
+     is _not_ stable, so tied values may be permuted.
+
+     Note that `NA's are not handled (explicitly) and you should use
+     different sorting functions if `NA's can be present.
+
+ -- Function: subroutine qsort4 (double precision V, integer INDX,
+          integer II, integer JJ)
+ -- Function: subroutine qsort3 (double precision V, integer II,
+          integer JJ)
+     The FORTRAN interface routines for sorting double precision
+     vectors are `qsort3' and `qsort4', equivalent to `R_qsort' and
+     `R_qsort_I', respectively.
+
+ -- Function: void R_max_col (double* MATRIX, int* NR, int* NC, int*
+          MAXES, int* TIES_METH)
+     Given the NR by NC matrix `matrix' in column-major ("FORTRAN")
+     order, `R_max_col()' returns in `MAXES[I-1]' the column number of
+     the maximal element in the I-th row (the same as R's `max.col()'
+     function).  In the case of ties (multiple maxima), `*ties_meth' is
+     an integer code in `1:3' determining the method: 1 = "random", 2 =
+     "first" and 3 = "last".  See R's help page `?max.col'.
+
+ -- Function: int findInterval (double* XT, int N, double X, Rboolean
+          RIGHTMOST_CLOSED, Rboolean ALL_INSIDE, int ILO, int* MFLAG)
+     Given the ordered vector XT of length N, return the interval or
+     index of X in `XT[]', typically max(i; 1 <= i <= N & XT[i] <= X)
+     where we use 1-indexing as in R and FORTRAN (but not C).  If
+     RIGHTMOST_CLOSED is true, also returns N-1 if X equals XT[N].  If
+     ALL_INSIDE is not 0, the result is coerced to lie in `1:(N-1)'
+     even when X is outside the XT[] range.  On return, `*MFLAG' equals
+     -1 if X < XT[1], +1 if X >= XT[N], and 0 otherwise.
+
+     The algorithm is particularly fast when ILO is set to the last
+     result of `findInterval()' and X is a value of a sequence which is
+     increasing or decreasing for subsequent calls.
+
+     There is also an `F77_CALL(interv)()' version of `findInterval()'
+     with the same arguments, but all pointers.
+
+   The following two functions do _numerical_ colorspace conversion from
+HSV to RGB and back.  Note that all colours must be in [0,1].
+
+ -- Function: void hsv2rgb (double H, double S, double V, double *R,
+          double *G, double *B)
+
+ -- Function: void rgb2hsv (double R, double G, double B, double *H,
+          double *S, double *V)
+
+   A system-independent interface to produce the name of a temporary
+file is provided as
+
+ -- Function: char * R_tmpnam (const char *PREFIX)
+     Return a pathname for a temporary file with name beginning with
+     PREFIX.  A `NULL' prefix is replaced by `""'.
+
+   There is also the internal function used to expand file names in
+several R functions, and called directly by `path.expand'.
+
+ -- Function: const char * R_ExpandFileName (const char *FN)
+     Expand a path name FN by replacing a leading tilde by the user's
+     home directory (if defined).  The precise meaning is
+     platform-specific; it will usually be taken from the environment
+     variable `HOME' if this is defined.
+
+
+File: R-exts.info,  Node: Re-encoding,  Next: Allowing interrupts,  Prev: Utility functions,  Up: The R API
+
+6.11 Re-encoding
+================
+
+R has its own C-level interface to the encoding conversion capabilities
+provided by `iconv' because there are incompatibilities between the
+declarations in different implementations of `iconv' (and before R
+2.10.0 they provided a dummy interface when `iconv' was not supported).
+
+   These are declared in header file `R_ext/Riconv.h'.
+
+ -- Function: void *Riconv_open (const char *TO, const char *FROM)
+   Set up a pointer to an encoding object to be used to convert between
+two encodings: `""' indicates the current locale.
+
+ -- Function: size_t Riconv (void *CD, const char **INBUF, size_t
+          *INBYTESLEFT, char **OUTBUF, size_t *OUTBYTESLEFT)
+   Convert as much as possible of `inbuf' to `outbuf'.  Initially the
+`int' variables indicate the number of bytes available in the buffers,
+and they are updated (and the `char' pointers are updated to point to
+the next free byte in the buffer).  The return value is the number of
+characters converted, or `(size_t)-1' (beware: `size_t' is usually an
+unsigned type).  It should be safe to assume that an error condition
+sets `errno' to one of `E2BIG' (the output buffer is full), `EILSEQ'
+(the input cannot be converted, and might be invalid in the encoding
+specified) or `EINVAL' (the input does not end with a complete
+multi-byte character).
+
+ -- Function: int Riconv_close (void * CD)
+   Free the resources of an encoding object.
+
+
+File: R-exts.info,  Node: Allowing interrupts,  Next: Platform and version information,  Prev: Re-encoding,  Up: The R API
+
+6.12 Allowing interrupts
+========================
+
+No port of R can be interrupted whilst running long computations in
+compiled code, so programmers should make provision for the code to be
+interrupted at suitable points by calling from C
+
+     #include <R_ext/Utils.h>
+
+     void R_CheckUserInterrupt(void);
+
+and from FORTRAN
+
+     subroutine rchkusr()
+
+   These check if the user has requested an interrupt, and if so branch
+to R's error handling functions.
+
+   Note that it is possible that the code behind one of the entry points
+defined here if called from your C or FORTRAN code could be
+interruptible or generate an error and so not return to your code.
+
+
+File: R-exts.info,  Node: Platform and version information,  Next: Inlining C functions,  Prev: Allowing interrupts,  Up: The R API
+
+6.13 Platform and version information
+=====================================
+
+The header files define `USING_R', which can be used to test if the
+code is indeed being used with R.
+
+   Header file `Rconfig.h' (included by `R.h') is used to define
+platform-specific macros that are mainly for use in other header files.
+The macro `WORDS_BIGENDIAN' is defined on big-endian systems (e.g.
+`sparc-sun-solaris2.6') and not on little-endian systems (such as
+`i686' under Linux or Windows). It can be useful when manipulating
+binary files.
+
+   Header file `Rversion.h' (*not* included by `R.h') defines a macro
+`R_VERSION' giving the version number encoded as an integer, plus a
+macro `R_Version' to do the encoding.  This can be used to test if the
+version of R is late enough, or to include back-compatibility features.
+For protection against very old versions of R which did not have this
+macro, use a construction such as
+
+     #if defined(R_VERSION) && R_VERSION >= R_Version(1, 9, 0)
+       ...
+     #endif
+
+   More detailed information is available in the macros `R_MAJOR',
+`R_MINOR', `R_YEAR', `R_MONTH' and `R_DAY': see the header file
+`Rversion.h' for their format.  Note that the minor version includes
+the patchlevel (as in `9.0').
+
+
+File: R-exts.info,  Node: Inlining C functions,  Next: Controlling visibility,  Prev: Platform and version information,  Up: The R API
+
+6.14 Inlining C functions
+=========================
+
+The C99 keyword `inline' is recognized by some compilers used to build
+R whereas others need `__inline__' or do not support inlining.
+Portable code can be written using the macro `R_INLINE' (defined in
+file `Rconfig.h' included by `R.h'), as for example from package
+*cluster*
+
+     #include <R.h>
+
+     static R_INLINE int ind_2(int l, int j)
+     {
+     ...
+     }
+
+   Be aware that using inlining with functions in more than one
+compilation unit is almost impossible to do portably: see
+`http://www.greenend.org.uk/rjk/2003/03/inline.html'.  All the R
+configure code has checked is that `R_INLINE' can be used in a single C
+file with the compiler used to build R.  We recommend that packages
+making extensive use of inlining include their own configure code.
+
+
+File: R-exts.info,  Node: Controlling visibility,  Next: Standalone Mathlib,  Prev: Inlining C functions,  Up: The R API
+
+6.15 Controlling visibility
+===========================
+
+Header `R_ext/Visibility' has some definitions for controlling the
+visibility of entry points.  These are only effective when
+`HAVE_VISIBILITY_ATTRIBUTE' is defined - this is checked when R is
+configured and recorded in header `Rconfig.h' (included by
+`R_ext/Visibility.h').  It is generally defined on modern Unix-alikes
+with a recent compiler (e.g. `gcc4'), but not supported on Windows.
+Minimizing the visibility of symbols in a shared library will both
+speed up its loading (unlikely to be significant) and reduce the
+possibility of linking to the wrong entry points of the same name.
+
+   C/C++ entry points prefixed by `attribute_hidden' will not be
+visible in the shared object.  There is no comparable mechanism for
+FORTRAN entry points, but there is a more comprehensive scheme used by,
+for example package *stats*.  Most compilers which allow control of
+visibility will allow control of visibility for all symbols _via_ a
+flag, and where known the flag is encapsulated in the macros
+`C_VISIBILITY' and `F77_VISIBILITY' for C and FORTRAN compilers.  These
+are defined in `etc/Makeconf' and so available for normal compilation
+of package code.  For example, `src/Makevars' could include
+
+     PKG_CFLAGS=$(C_VISIBILITY)
+     PKG_FFLAGS=$(F77_VISIBILITY)
+
+   This would end up with *no* visible entry points, which would be
+pointless.  However, the effect of the flags can be overridden by using
+the `attribute_visible' prefix.  A shared object which registers its
+entry points needs only for have one visible entry point, its
+initializer, so for example package *stats* has
+
+     void attribute_visible R_init_stats(DllInfo *dll)
+     {
+         R_registerRoutines(dll, CEntries, CallEntries, FortEntries, NULL);
+         R_useDynamicSymbols(dll, FALSE);
+     ...
+     }
+
+   The visibility mechanism is not available on Windows, but there is an
+equally effective way to control which entry points are visible, by
+supplying a definitions file `PKGNME/src/PKGNAME-win.def': only entry
+points listed in that file will be visible.  Again using *stats* as an
+example, it has
+
+     LIBRARY stats.dll
+     EXPORTS
+      R_init_stats
+
+
+File: R-exts.info,  Node: Standalone Mathlib,  Next: Organization of header files,  Prev: Controlling visibility,  Up: The R API
+
+6.16 Using these functions in your own C code
+=============================================
+
+It is possible to build `Mathlib', the R set of mathematical functions
+documented in `Rmath.h', as a standalone library `libRmath' under both
+Unix and Windows.  (This includes the functions documented in *Note
+Numerical analysis subroutines:: as from that header file.)
+
+   The library is not built automatically when R is installed, but can
+be built in the directory `src/nmath/standalone' in the R sources: see
+the file `README' there.  To use the code in your own C program include
+
+     #define MATHLIB_STANDALONE
+     #include <Rmath.h>
+
+and link against `-lRmath' (and perhaps `-lm'.  There is an example
+file `test.c'.
+
+   A little care is needed to use the random-number routines. You will
+need to supply the uniform random number generator
+
+     double unif_rand(void)
+
+or use the one supplied (and with a dynamic library or DLL you will have
+to use the one supplied, which is the Marsaglia-multicarry with an entry
+points
+
+     set_seed(unsigned int, unsigned int)
+
+to set its seeds and
+
+     get_seed(unsigned int *, unsigned int *)
+
+to read the seeds).
+
+
+File: R-exts.info,  Node: Organization of header files,  Prev: Standalone Mathlib,  Up: The R API
+
+6.17 Organization of header files
+=================================
+
+The header files which R installs are in directory `R_INCLUDE_DIR'
+(default `R_HOME/include').  This currently includes
+
+     `R.h'                includes many other files
+     `S.h'                different version for code ported
+                          from S
+     `Rinternals.h'       definitions for using R's internal
+                          structures
+     `Rdefines.h'         macros for an S-like interface to the
+                          above
+     `Rmath.h'            standalone math library
+     `Rversion.h'         R version information
+     `Rinterface.h'       for add-on front-ends (Unix-alikes
+                          only)
+     `Rembedded.h'        for add-on front-ends
+     `R_ext/Applic.h'     optimization and integration
+     `R_ext/BLAS.h'       C definitions for BLAS routines
+     `R_ext/Callbacks.h'  C (and R function) top-level task
+                          handlers
+     `R_ext/GetX11Image.h'X11Image interface used by package
+                          *trkplot*
+     `R_ext/Lapack.h'     C definitions for some LAPACK
+                          routines
+     `R_ext/Linpack.h'    C definitions for some LINPACK
+                          routines, not all of which are
+                          included in R
+     `R_ext/Parse.h'      a small part of R's parse interface
+     `R_ext/RConvertors.h'
+     `R_ext/Rdynload.h'   needed to register compiled code in
+                          packages
+     `R_ext/R-ftp-http.h' interface to internal method of
+                          `download.file'
+     `R_ext/Riconv.h'     interface to `iconv'
+     `R_ext/RStartup.h'   for add-on front-ends
+     `R_ext/Visibility.h' definitions controlling visibility
+     `R_ext/eventloop.h'  for add-on front-ends and for
+                          packages that need to share in the R
+                          event loops (on all platforms)
+
+   The following headers are included by `R.h':
+
+     `Rconfig.h'          configuration info that is made
+                          available
+     `R_ext/Arith.h'      handling for `NA's, `NaN's,
+                          `Inf'/`-Inf'
+     `R_ext/Boolean.h'    `TRUE'/`FALSE' type
+     `R_ext/Complex.h'    C typedefs for R's `complex'
+     `R_ext/Constants.h'  constants
+     `R_ext/Error.h'      error handling
+     `R_ext/Memory.h'     memory allocation
+     `R_ext/Print.h'      `Rprintf' and variations.
+     `R_ext/Random.h'     random number generation
+     `R_ext/RS.h'         definitions common to `R.h' and
+                          `S.h', including `F77_CALL' etc.
+     `R_ext/Utils.h'      sorting and other utilities
+     `R_ext/libextern.h'  definitions for exports from `R.dll'
+                          on Windows.
+
+   The graphics systems are exposed in headers
+`R_ext/GraphicsEngine.h', `R_ext/GraphicsDevice.h' (which it includes)
+and `R_ext/QuartzDevice.h'.  Some entry points from the *stats* package
+are in `R_ext/stats_package.h' (currently related to the internals of
+`nls' and `nlminb').
+
+
+File: R-exts.info,  Node: Generic functions and methods,  Next: Linking GUIs and other front-ends to R,  Prev: The R API,  Up: Top
+
+7 Generic functions and methods
+*******************************
+
+R programmers will often want to add methods for existing generic
+functions, and may want to add new generic functions or make existing
+functions generic.  In this chapter we give guidelines for doing so,
+with examples of the problems caused by not adhering to them.
+
+   This chapter only covers the `informal' class system copied from S3,
+and not with the S4 (formal) methods of package *methods*.
+
+   The key function for methods is `NextMethod', which dispatches the
+next method.  It is quite typical for a method function to make a few
+changes to its arguments, dispatch to the next method, receive the
+results and modify them a little.  An example is
+
+     t.data.frame <- function(x)
+     {
+         x <- as.matrix(x)
+         NextMethod("t")
+     }
+
+Also consider `predict.glm': it happens that in R for historical
+reasons it calls `predict.lm' directly, but in principle (and in S
+originally and currently) it could use `NextMethod'.  (`NextMethod'
+seems under-used in the R sources.  Do be aware that there are S/R
+differences in this area, and the example above works because there is
+a _next_ method, the default method, not that a new method is selected
+when the class is changed.)
+
+   _Any_ method a programmer writes may be invoked from another method
+by `NextMethod', _with the arguments appropriate to the previous
+method_.  Further, the programmer cannot predict which method
+`NextMethod' will pick (it might be one not yet dreamt of), and the end
+user calling the generic needs to be able to pass arguments to the next
+method.  For this to work
+
+     _A method must have all the arguments of the generic, including
+     `...' if the generic does._
+
+   It is a grave misunderstanding to think that a method needs only to
+accept the arguments it needs.  The original S version of `predict.lm'
+did not have a `...' argument, although `predict' did.  It soon became
+clear that `predict.glm' needed an argument `dispersion' to handle
+over-dispersion.  As `predict.lm' had neither a `dispersion' nor a `...'
+argument, `NextMethod' could no longer be used.  (The legacy, two
+direct calls to `predict.lm', lives on in `predict.glm' in R, which is
+based on the workaround for S3 written by Venables & Ripley.)
+
+   Further, the user is entitled to use positional matching when calling
+the generic, and the arguments to a method called by `UseMethod' are
+those of the call to the generic.  Thus
+
+     _A method must have arguments in exactly the same order as the
+     generic._
+
+To see the scale of this problem, consider the generic function
+`scale', defined as
+
+     scale <- function (x, center = TRUE, scale = TRUE)
+         UseMethod("scale")
+
+Suppose an unthinking package writer created methods such as
+
+     scale.foo <- function(x, scale = FALSE, ...) { }
+
+Then for `x' of class `"foo"' the calls
+
+     scale(x, , TRUE)
+     scale(x, scale = TRUE)
+
+would do most likely do different things, to the justifiable
+consternation of the end user.
+
+   To add a further twist, which default is used when a user calls
+`scale(x)' in our example?  What if
+
+     scale.bar <- function(x, center, scale = TRUE) NextMethod("scale")
+
+and `x' has class `c("bar", "foo")'?  It is the default specified in
+the method that is used, but the default specified in the generic may
+be the one the user sees.  This leads to the recommendation:
+
+     _If the generic specifies defaults, all methods should use the
+     same defaults._
+
+An easy way to follow these recommendations is to always keep generics
+simple, e.g.
+
+     scale <- function(x, ...) UseMethod("scale")
+
+   Only add parameters and defaults to the generic if they make sense in
+all possible methods implementing it.
+
+* Menu:
+
+* Adding new generics::
+
+
+File: R-exts.info,  Node: Adding new generics,  Prev: Generic functions and methods,  Up: Generic functions and methods
+
+7.1 Adding new generics
+=======================
+
+When creating a new generic function, bear in mind that its argument
+list will be the maximal set of arguments for methods, including those
+written elsewhere years later.  So choosing a good set of arguments may
+well be an important design issue, and there need to be good arguments
+_not_ to include a `...' argument.
+
+   If a `...' argument is supplied, some thought should be given to its
+position in the argument sequence.  Arguments which follow `...' must
+be named in calls to the function, and they must be named in full
+(partial matching is suppressed after `...').  Formal arguments before
+`...' can be partially matched, and so may `swallow' actual arguments
+intended for `...'.  Although it is commonplace to make the `...'
+argument the last one, that is not always the right choice.
+
+   Sometimes package writers want to make generic a function in the base
+package, and request a change in R.  This may be justifiable, but
+making a function generic with the old definition as the default method
+does have a small performance cost.  It is never necessary, as a package
+can take over a function in the base package and make it generic by
+
+     foo <- function(object, ...) UseMethod("foo")
+     foo.default <- base::foo
+
+(If the thus defined default method needs a `...' added to its argument
+list, one can e.g. use `formals(foo.default) <- c(formals(foo.default),
+alist(... = ))'.)
+
+   The same idea can be applied for functions in other packages with
+name spaces.
+
+
+File: R-exts.info,  Node: Linking GUIs and other front-ends to R,  Next: Function and variable index,  Prev: Generic functions and methods,  Up: Top
+
+8 Linking GUIs and other front-ends to R
+****************************************
+
+There are a number of ways to build front-ends to R: we take this to
+mean a GUI or other application that has the ability to submit commands
+to R and perhaps to receive results back (not necessarily in a text
+format).  There are other routes besides those described here, for
+example the package *Rserve* (from CRAN, see also
+`http://www.rforge.net/Rserve/') and connections to Java in `SJava'
+(see `http://www.omegahat.org/RSJava/' and `JRI', part of the *rJava*
+package on CRAN).
+
+* Menu:
+
+* Embedding R under Unix-alikes::
+* Embedding R under Windows::
+
+
+File: R-exts.info,  Node: Embedding R under Unix-alikes,  Next: Embedding R under Windows,  Prev: Linking GUIs and other front-ends to R,  Up: Linking GUIs and other front-ends to R
+
+8.1 Embedding R under Unix-alikes
+=================================
+
+R can be built as a shared library(1) if configured with
+`--enable-R-shlib'.  This shared library can be used to run R from
+alternative front-end programs.  We will assume this has been done for
+the rest of this section.  In addition, from R 2.7.0 it can be built as
+a static library if configured with `--enable-R-static-lib', and this
+can be used in a very similar way.
+
+   The command-line R front-end, `R_HOME/bin/exec/R' is one such
+example, and the former GNOME (see package *gnomeGUI* on CRAN's
+`Archive' area) and Mac OS X consoles are others.  The source for
+`R_HOME/bin/exec/R' is in file `src/main/Rmain.c' and is very simple
+
+     int Rf_initialize_R(int ac, char **av); /* in ../unix/system.c */
+     void Rf_mainloop();                     /* in main.c */
+
+     extern int R_running_as_main_program;   /* in ../unix/system.c */
+
+     int main(int ac, char **av)
+     {
+         R_running_as_main_program = 1;
+         Rf_initialize_R(ac, av);
+         Rf_mainloop(); /* does not return */
+         return 0;
+     }
+
+indeed, misleadingly simple.  Remember that `R_HOME/bin/exec/R' is run
+from a shell script `R_HOME/bin/R' which sets up the environment for the
+executable, and this is used for
+
+   * Setting `R_HOME' and checking it is valid, as well as the path
+     `R_SHARE_DIR' and `R_DOC_DIR' to the installed `share' and `doc'
+     directory trees.  Also setting `R_ARCH' if needed.
+
+   * Setting `LD_LIBRARY_PATH' to include the directories used in
+     linking R.  This is recorded as the default setting of
+     `R_LD_LIBRARY_PATH' in the shell script `R_HOME/etcR_ARCH/ldpaths'.
+
+   * Processing some of the arguments, for example to run R under a
+     debugger and to launch alternative front-ends to provide GUIs.
+
+The first two of these can be achieved for your front-end by running it
+_via_ `R CMD'. So, for example
+
+     R CMD /usr/local/lib/R/bin/exec/R
+     R CMD exec/R
+
+will both work in a standard R installation. (`R CMD' looks first for
+executables in `R_HOME/bin'.)  If you do not want to run your front-end
+in this way, you need to ensure that `R_HOME' is set and
+`LD_LIBRARY_PATH' is suitable.  (The latter might well be, but modern
+Unix/Linux systems do not normally include `/usr/local/lib'
+(`/usr/local/lib64' on some architectures), and R does look there for
+system components.)
+
+   The other senses in which this example is too simple are that all the
+internal defaults are used and that control is handed over to the R
+main loop.  There are a number of small examples(2) in the
+`tests/Embedding' directory.  These make use of `Rf_initEmbeddedR' in
+`src/main/Rembedded.c', and essentially use
+     #include <Rembedded.h>
+
+     int main(int ac, char **av)
+     {
+         /* do some setup */
+         Rf_initEmbeddedR(argc, argv);
+         /* do some more setup */
+
+         /* submit some code to R, which is done interactively via
+             run_Rmainloop();
+
+             A possible substitute for a pseudo-console is
+
+             R_ReplDLLinit();
+             while(R_ReplDLLdo1() > 0) {
+             /* add user actions here if desired */
+            }
+
+          */
+         Rf_endEmbeddedR(0);
+         /* final tidying up after R is shutdown */
+         return 0;
+     }
+
+If you don't want to pass R arguments, you can fake an `argv' array,
+for example by
+
+         char *argv[]= {"REmbeddedPostgres", "--silent"};
+         Rf_initEmbeddedR(sizeof(argv)/sizeof(argv[0]), argv);
+
+   However, to make a GUI we usually do want to run `run_Rmainloop'
+after setting up various parts of R to talk to our GUI, and arranging
+for our GUI callbacks to be called during the R mainloop.
+
+   One issue to watch is that on some platforms `Rf_initEmbeddedR' and
+`Rf_endEmbeddedR' change the settings of the FPU (e.g. to allow errors
+to be trapped and to set extended precision registers).
+
+   The standard code sets up a session temporary directory in the usual
+way, _unless_ `R_TempDir' is set to a non-NULL value before
+`Rf_initEmbeddedR' is called.  In that case the value is assumed to
+contain an existing writable directory (no check is done), and it is not
+cleaned up when R is shut down.
+
+   `Rf_initEmbeddedR' sets R to be in interactive mode: you can set
+`R_Interactive' (defined in `Rinterface.h') subsequently to change this.
+
+   Note that R expects to be run with the locale category `LC_NUMERIC'
+set to its default value of `C', and so should not be embedded into an
+application which changes that.
+
+* Menu:
+
+* Compiling against the R library::
+* Setting R callbacks::
+* Registering symbols::
+* Meshing event loops::
+* Threading issues::
+
+   ---------- Footnotes ----------
+
+   (1) In the parlance of Mac OS X this is a _dynamic_ library, and is
+the normal way to build R on that platform.
+
+   (2) but these are not part of the automated test procedures and so
+little tested.
+
+
+File: R-exts.info,  Node: Compiling against the R library,  Next: Setting R callbacks,  Prev: Embedding R under Unix-alikes,  Up: Embedding R under Unix-alikes
+
+8.1.1 Compiling against the R library
+-------------------------------------
+
+Suitable flags to compile and link against the R (shared or static)
+library can be found by
+
+     R CMD config --cppflags
+     R CMD config --ldflags
+
+   If R is installed, `pkg-config' is available and sub-architectures
+have not been used, alternatives for a shared R library are
+
+     pkg-config --cflags libR
+     pkg-config --libs libR
+
+and for a static R library
+
+     pkg-config --cflags libR
+     pkg-config --libs --static libR
+
+
+File: R-exts.info,  Node: Setting R callbacks,  Next: Registering symbols,  Prev: Compiling against the R library,  Up: Embedding R under Unix-alikes
+
+8.1.2 Setting R callbacks
+-------------------------
+
+For Unix-alikes there is a public header file `Rinterface.h' that makes
+it possible to change the standard callbacks used by R in a documented
+way.  This defines pointers (if `R_INTERFACE_PTRS' is defined)
+
+     extern void (*ptr_R_Suicide)(const char *);
+     extern void (*ptr_R_ShowMessage)(const char *);
+     extern int  (*ptr_R_ReadConsole)(const char *, unsigned char *, int, int);
+     extern void (*ptr_R_WriteConsole)(const char *, int);
+     extern void (*ptr_R_WriteConsoleEx)(const char *, int, int);
+     extern void (*ptr_R_ResetConsole)();
+     extern void (*ptr_R_FlushConsole)();
+     extern void (*ptr_R_ClearerrConsole)();
+     extern void (*ptr_R_Busy)(int);
+     extern void (*ptr_R_CleanUp)(SA_TYPE, int, int);
+     extern int  (*ptr_R_ShowFiles)(int, const char **, const char **,
+                                    const char *, Rboolean, const char *);
+     extern int  (*ptr_R_ChooseFile)(int, char *, int);
+     extern int  (*ptr_R_EditFile)(const char *);
+     extern void (*ptr_R_loadhistory)(SEXP, SEXP, SEXP, SEXP);
+     extern void (*ptr_R_savehistory)(SEXP, SEXP, SEXP, SEXP);
+     extern void (*ptr_R_addhistory)(SEXP, SEXP, SEXP, SEXP);
+
+which allow standard R callbacks to be redirected to your GUI.  What
+these do is generally documented in the file `src/unix/system.txt'.
+
+ -- Function: void R_ShowMessage (char *MESSAGE)
+     This should display the message, which may have multiple lines:  it
+     should be brought to the user's attention immediately.
+
+ -- Function: void R_Busy (int WHICH)
+     This function invokes actions (such as change of cursor) when R
+     embarks on an extended computation (`WHICH=1') and when such a
+     state terminates (`WHICH=0').
+
+ -- Function: int R_ReadConsole (const char *PROMPT, unsigned char
+          *BUF, int BUFLEN, int HIST)
+ -- Function: void R_WriteConsole (const char *BUF, int BUFLEN)
+ -- Function: void R_WriteConsoleEx (const char *BUF, int BUFLEN, int
+          OTYPE)
+ -- Function: void R_ResetConsole ()
+ -- Function: void R_FlushConsole ()
+ -- Function: void R_ClearErrConsole ()
+     These functions interact with a console.
+
+     `R_ReadConsole' prints the given prompt at the console and then
+     does a `gets(3)'-like operation, transferring up to BUFLEN
+     characters into the buffer BUF. The last two bytes should be set
+     to `"\n\0"' to preserve sanity.  If HIST is non-zero, then the
+     line should be added to any command history which is being
+     maintained.  The return value is 0 is no input is available and >0
+     otherwise.
+
+     `R_WriteConsoleEx' writes the given buffer to the console, OTYPE
+     specifies the output type (regular output or warning/error). Call
+     to `R_WriteConsole(buf, buflen)' is equivalent to
+     `R_WriteConsoleEx(buf, buflen, 0)'. To ensure backward
+     compatibility of the callbacks, `ptr_R_WriteConsoleEx' is used only
+     if `ptr_R_WriteConsole' is set to `NULL'.  To ensure that
+     `stdout()' and `stderr()' connections point to the console, set
+     the corresponding files to `NULL' _via_
+                R_Outputfile = NULL;
+                R_Consolefile = NULL;
+
+     `R_ResetConsole' is called when the system is reset after an error.
+     `R_FlushConsole' is called to flush any pending output to the
+     system console.  `R_ClearerrConsole' clears any errors associated
+     with reading from the console.
+
+ -- Function: int R_ShowFiles (int NFILE, const char **FILE, const char
+          **HEADERS, const char *WTITLE, Rboolean DEL, const char
+          *PAGER)
+     This function is used to display the contents of files.
+
+ -- Function: int R_ChooseFile (int NEW, char *BUF, int LEN)
+     Choose a file and return its name in BUF of length LEN.  Return
+     value is 0 for success, > 0 otherwise.
+
+ -- Function: int R_EditFile (const char *BUF)
+     Send a file to an editor window.
+
+ -- Function: SEXP R_loadhistory (SEXP, SEXP, SEXP, SEXP);
+ -- Function: SEXP R_savehistory (SEXP, SEXP, SEXP, SEXP);
+ -- Function: SEXP R_addhistory (SEXP, SEXP, SEXP, SEXP);
+     `.Internal' functions for `loadhistory', `savehistory' and
+     `timestamp': these are called after checking the number of
+     arguments.
+
+     If the console has no history mechanism these can be as simple as
+
+          SEXP R_loadhistory (SEXP call, SEXP op, SEXP args, SEXP env)
+          {
+              errorcall(call, "loadhistory is not implemented");
+              return R_NilValue;
+          }
+          SEXP R_savehistory (SEXP call, SEXP op , SEXP args, SEXP env)
+          {
+              errorcall(call, "savehistory is not implemented");
+              return R_NilValue;
+          }
+          SEXP R_addhistory (SEXP call, SEXP op , SEXP args, SEXP env)
+          {
+              return R_NilValue;
+          }
+
+     The `R_addhistory' function should return silently if no history
+     mechanism is present, as a user may be calling `timestamp' purely
+     to write the time stamp to the console.
+
+ -- Function: void R_Suicide (const char *MESSAGE)
+     This should abort R as rapidly as possible, displaying the message.
+     A possible implementation is
+
+          void R_Suicide (const char *message)
+          {
+              char  pp[1024];
+              snprintf(pp, 1024, "Fatal error: %s\n", s);
+              R_ShowMessage(pp);
+              R_CleanUp(SA_SUICIDE, 2, 0);
+          }
+
+ -- Function: void R_CleanUp (SA_TYPE SAVEACT, int STATUS, int RUNLAST)
+     This function invokes any actions which occur at system
+     termination.  It needs to be quite complex:
+
+          #include <Rinterface.h>
+          #include <Rembedded.h>    /* for Rf_KillAllDevices */
+
+          void R_CleanUp (SA_TYPE saveact, int status, int RunLast)
+          {
+              if(saveact == SA_DEFAULT) saveact = SaveAction;
+              if(saveact == SA_SAVEASK) {
+                 /* ask what to do and set saveact */
+              }
+              switch (saveact) {
+              case SA_SAVE:
+                  if(runLast) R_dot_Last();
+                  if(R_DirtyImage) R_SaveGlobalEnv();
+                  /* save the console history in R_HistoryFile */
+                  break;
+              case SA_NOSAVE:
+                  if(runLast) R_dot_Last();
+                  break;
+              case SA_SUICIDE:
+              default:
+                  break;
+              }
+
+              R_RunExitFinalizers();
+              /* clean up after the editor e.g. CleanEd() */
+
+              R_CleanTempDir();
+
+              /* close all the graphics devices */
+              if(saveact != SA_SUICIDE) Rf_KillAllDevices();
+              fpu_setup(FALSE);
+
+              exit(status);
+          }
+
+
+File: R-exts.info,  Node: Registering symbols,  Next: Meshing event loops,  Prev: Setting R callbacks,  Up: Embedding R under Unix-alikes
+
+8.1.3 Registering symbols
+-------------------------
+
+An application embedding R needs a different way of registering symbols
+because it is not a dynamic library loaded by R as would be the case
+with a package.  Therefore R reserves a special `DllInfo' entry for the
+embedding application such that it can register symbols to be used with
+`.C', `.Call' etc.  This entry can be obtained by calling
+`getEmbeddingDllInfo', so a typical use is
+
+     DllInfo *info = R_getEmbeddingDllInfo();
+     R_registerRoutines(info, cMethods, callMethods, NULL, NULL);
+
+   The native routines defined by `cMethod' and `callMethods' should be
+present in the embedding application.  See *Note Registering native
+routines:: for details on registering symbols in general.
+
+
+File: R-exts.info,  Node: Meshing event loops,  Next: Threading issues,  Prev: Registering symbols,  Up: Embedding R under Unix-alikes
+
+8.1.4 Meshing event loops
+-------------------------
+
+One of the most difficult issues in interfacing R to a front-end is the
+handling of event loops, at least if a single thread is used.  R uses
+events and timers for
+
+   * Running X11 windows such as the graphics device and data editor,
+     and interacting with them (e.g., using `locator()').
+
+   * Supporting Tcl/Tk events for the *tcltk* package (for at least the
+     X11 version of Tk).
+
+   * Preparing input.
+
+   * Timing operations, for example for profiling R code and
+     `Sys.sleep()'.
+
+   * Interrupts, where permitted.
+
+Specifically, the Unix command-line version of R runs separate event
+loops for
+
+   * Preparing input at the console command-line, in file
+     `src/unix/sys-unix.c'.
+
+   * Waiting for a response from a socket in the internal functions
+     underlying FTP and HTTP transfers in `download.file()' and for
+     direct socket access, in files `src/modules/internet/nanoftp.c',
+     `src/modules/internet/nanohttp.c' and
+     `src/modules/internet/Rsock.c'
+
+   * Mouse and window events when displaying the X11-based dataentry
+     window, in file `src/modules/X11/dataentry.c'.  This is regarded as
+     _modal_, and no other events are serviced whilst it is active.
+
+   There is a protocol for adding event handlers to the first two types
+of event loops, using types and functions declared in the header
+`R_ext/eventloop.h' and described in comments in file
+`src/unix/sys-std.c'.  It is possible to add (or remove) an input
+handler for events on a particular file descriptor, or to set a polling
+interval (_via_ `R_wait_usec') and a function to be called periodically
+_via_ `R_PolledEvents': the polling mechanism is used by the *tcltk*
+package.
+
+   An alternative front-end needs both to make provision for other R
+events whilst waiting for input, and to ensure that it is not frozen out
+during events of the second type.  This is not handled very well in the
+existing examples.  The GNOME front-end can run a own handler for polled
+events by setting
+
+     extern int (*R_timeout_handler)();
+     extern long R_timeout_val;
+
+           if (R_timeout_handler && R_timeout_val)
+               gtk_timeout_add(R_timeout_val, R_timeout_handler, NULL);
+           gtk_main ();
+
+whilst it is waiting for console input.  This obviously handles events
+for Gtk windows (such as the graphics device in the *gtkDevice*
+package), but not X11 events (such as the `X11()' device) or for other
+event handlers that might have been registered with R.  It does not
+attempt to keep itself alive whilst R is waiting on sockets.  The
+ability to add a polled handler as `R_timeout_handler' is used by the
+*tcltk* package.
+
+
+File: R-exts.info,  Node: Threading issues,  Prev: Meshing event loops,  Up: Embedding R under Unix-alikes
+
+8.1.5 Threading issues
+----------------------
+
+Embedded R is designed to be run in the main thread, and all the
+testing is done in that context.  There is a potential issue with the
+stack-checking mechanism where threads are involved.  This uses two
+variables declared in `Rinterface.h' (if `CSTACK_DEFNS' is defined) as
+
+     extern uintptr_t R_CStackLimit; /* C stack limit */
+     extern uintptr_t R_CStackStart; /* Initial stack address */
+
+Note that `uintptr_t' is a C99 type for which a substitute is defined
+in R, so your code needs to define `HAVE_UINTPTR_T' appropriately.
+
+   These will be set(1) when `Rf_initialize_R' is called, to values
+appropriate to the main thread.  Stack-checking can be disabled by
+setting `R_CStackLimit = (uintptr_t)-1', but it is better to if possible
+set appropriate values.  (What these are and how to determine them are
+OS-specific, and the stack size limit may differ for secondary threads.
+If you have a choice of stack size, at least 8Mb is recommended.)
+
+   You may also want to consider how signals are handled: R sets signal
+handlers for several signals, including `SIGINT', `SIGSEGV', `SIGPIPE',
+`SIGUSR1' and `SIGUSR2', but these can all be suppressed by setting the
+variable `R_SignalHandlers' (declared in `Rinterface.h') to `0'.
+
+   ---------- Footnotes ----------
+
+   (1) at least on platforms where the values are available, that is
+having `getrlimit' and on Linux or having `sysctl' supporting
+`KERN_USRSTACK', including FreeBSD and Mac OS X.
+
+
+File: R-exts.info,  Node: Embedding R under Windows,  Prev: Embedding R under Unix-alikes,  Up: Linking GUIs and other front-ends to R
+
+8.2 Embedding R under Windows
+=============================
+
+All Windows interfaces to R call entry points in the DLL `R.dll',
+directly or indirectly.  Simpler applications may find it easier to use
+the indirect route _via_ (D)COM.
+
+* Menu:
+
+* Using (D)COM::
+* Calling R.dll directly::
+
+
+File: R-exts.info,  Node: Using (D)COM,  Next: Calling R.dll directly,  Prev: Embedding R under Windows,  Up: Embedding R under Windows
+
+8.2.1 Using (D)COM
+------------------
+
+(D)COM is a standard Windows mechanism used for communication between
+Windows applications.  One application (here R) is run as COM server
+which offers services to clients, here the front-end calling
+application.  The services are described in a `Type Library' and are
+(more or less) language-independent, so the calling application can be
+written in C or C++ or Visual Basic or Perl or Python and so on.  The
+`D' in (D)COM refers to `distributed', as the client and server can be
+running on different machines.
+
+   The basic R distribution is not a (D)COM server, but two addons are
+currently available that interface directly with R and provide a (D)COM
+server:
+   * There is a (D)COM server called `StatConnector' written by Thomas
+     Baier available on CRAN
+     (`http://cran.r-project.org/other-software.html') which works with
+     `Rproxy.dll' (in the R distribution) and `R.dll' to support
+     transfer of data to and from R and remote execution of R commands,
+     as well as embedding of an R graphics window.  The *rcom* package
+     on CRAN provides a (D)COM server in a running R session.
+
+   * Another (D)COM server, `RDCOMServer', is available from
+     `http://www.omegahat.org/'. Its philosophy is discussed in
+     `http://www.omegahat.org/RDCOMServer/Docs/Paradigm.html' and is
+     very different from the purpose of this section.
+
+
+File: R-exts.info,  Node: Calling R.dll directly,  Prev: Using (D)COM,  Up: Embedding R under Windows
+
+8.2.2 Calling R.dll directly
+----------------------------
+
+The `R' DLL is mainly written in C and has `_cdecl' entry points.
+Calling it directly will be tricky except from C code (or C++ with a
+little care).
+
+   There is a version of the Unix interface calling
+
+     int Rf_initEmbeddedR(int ac, char **av);
+     void Rf_endEmbeddedR(int fatal);
+
+which is an entry point in `R.dll'.  Examples of its use (and a
+suitable `Makefile.win') can be found in the `tests/Embedding'
+directory of the sources.  You may need to ensure that `R_HOME/bin' is
+in your `PATH' so the R DLLs are found.
+
+   Examples of calling `R.dll' directly are provided in the directory
+`src/gnuwin32/front-ends', including a simple command-line front end
+`rtest.c' whose code is
+
+     #define Win32
+     #include <windows.h>
+     #include <stdio.h>
+     #include <Rversion.h>
+     #define LibExtern __declspec(dllimport) extern
+     #include <Rembedded.h>
+     #include <R_ext/RStartup.h>
+     /* for askok and askyesnocancel */
+     #include <graphapp.h>
+
+     /* for signal-handling code */
+     #include <psignal.h>
+
+     /* simple input, simple output */
+
+     /* This version blocks all events: a real one needs to call ProcessEvents
+        frequently. See rterm.c and ../system.c for one approach using
+        a separate thread for input.
+     */
+     int myReadConsole(const char *prompt, char *buf, int len, int addtohistory)
+     {
+         fputs(prompt, stdout);
+         fflush(stdout);
+         if(fgets(buf, len, stdin)) return 1; else return 0;
+     }
+
+     void myWriteConsole(const char *buf, int len)
+     {
+         printf("%s", buf);
+     }
+
+     void myCallBack(void)
+     {
+         /* called during i/o, eval, graphics in ProcessEvents */
+     }
+
+     void myBusy(int which)
+     {
+         /* set a busy cursor ... if which = 1, unset if which = 0 */
+     }
+
+     static void my_onintr(int sig) { UserBreak = 1; }
+
+     int main (int argc, char **argv)
+     {
+         structRstart rp;
+         Rstart Rp = &rp;
+         char Rversion[25], *RHome;
+
+         sprintf(Rversion, "%s.%s", R_MAJOR, R_MINOR);
+         if(strcmp(getDLLVersion(), Rversion) != 0) {
+             fprintf(stderr, "Error: R.DLL version does not match\n");
+             exit(1);
+         }
+
+         R_setStartTime();
+         R_DefParams(Rp);
+         if((RHome = get_R_HOME()) == NULL) {
+              fprintf(stderr, "R_HOME must be set in the environment or Registry\n");
+              exit(1);
+         }
+         Rp->rhome = RHome;
+         Rp->home = getRUser();
+         Rp->CharacterMode = LinkDLL;
+         Rp->ReadConsole = myReadConsole;
+         Rp->WriteConsole = myWriteConsole;
+         Rp->CallBack = myCallBack;
+         Rp->ShowMessage = askok;
+         Rp->YesNoCancel = askyesnocancel;
+         Rp->Busy = myBusy;
+
+         Rp->R_Quiet = TRUE;        /* Default is FALSE */
+         Rp->R_Interactive = FALSE; /* Default is TRUE */
+         Rp->RestoreAction = SA_RESTORE;
+         Rp->SaveAction = SA_NOSAVE;
+         R_SetParams(Rp);
+         R_set_command_line_arguments(argc, argv);
+
+         FlushConsoleInputBuffer(GetStdHandle(STD_INPUT_HANDLE));
+
+         signal(SIGBREAK, my_onintr);
+         GA_initapp(0, 0);
+         readconsolecfg();
+         setup_Rmainloop();
+     #ifdef SIMPLE_CASE
+         run_Rmainloop();
+     #else
+         R_ReplDLLinit();
+         while(R_ReplDLLdo1() > 0) {
+     /* add user actions here if desired */
+         }
+     /* only get here on EOF (not q()) */
+     #endif
+         Rf_endEmbeddedR(0);
+         return 0;
+     }
+
+   The ideas are
+
+   * Check that the front-end and the linked `R.dll' match - other
+     front-ends may allow a looser match.
+
+   * Find and set the R home directory and the user's home directory.
+     The former may be available from the Windows Registry: it will
+     normally be in `HKEY_LOCAL_MACHINE\Software\R-core\R\InstallPath'
+     and can be set there by running the program
+     `R_HOME\bin\RSetReg.exe'.
+
+   * Define startup conditions and callbacks _via_ the `Rstart'
+     structure.  `R_DefParams' sets the defaults, and `R_SetParams' sets
+     updated values.
+
+   * Record the command-line arguments used by
+     `R_set_command_line_arguments' for use by the R function
+     `commandArgs()'.
+
+   * Set up the signal handler and the basic user interface.
+
+   * Run the main R loop, possibly with our actions intermeshed.
+
+   * Arrange to clean up.
+
+   An underlying theme is the need to keep the GUI `alive', and this has
+not been done in this example.  The R callback `R_ProcessEvents' needs
+to be called frequently to ensure that Windows events in R windows are
+handled expeditiously.  Conversely, R needs to allow the GUI code
+(which is running in the same process) to update itself as needed - two
+ways are provided to allow this:
+
+   * `R_ProcessEvents' calls the callback registered by `Rp->callback'.
+     A version of this is used to run package Tcl/Tk for *tcltk* under
+     Windows, for the code is
+
+          void R_ProcessEvents(void)
+          {
+              while (peekevent()) doevent(); /* Windows events for GraphApp */
+              if (UserBreak) { UserBreak = FALSE; onintr(); }
+              R_CallBackHook();
+              if(R_tcldo) R_tcldo();
+          }
+
+   * The mainloop can be split up to allow the calling application to
+     take some action after each line of input has been dealt with: see
+     the alternative code below `#ifdef SIMPLE_CASE'.
+
+   It may be that no R GraphApp windows need to be considered, although
+these include pagers, the `windows()' graphics device, the R data and
+script editors and various popups such as `choose.file()' and
+`select.list()'.  It would be possible to replace all of these, but it
+seems easier to allow GraphApp to handle most of them.
+
+   It is possible to run R in a GUI in a single thread (as `RGui.exe'
+shows) but it will normally be easier(1) to use multiple threads.
+
+   Note that R's own front ends use a stack size of 10Mb, whereas MinGW
+executables default to 2Mb, and Visual C++ ones to 1Mb.  The latter
+stack sizes are too small for a number of R applications, so
+general-purpose front-ends should use a larger stack size.
+
+   ---------- Footnotes ----------
+
+   (1) An attempt to use only threads in the late 1990s failed to work
+correctly under Windows 95, the predominant version of Windows at that
+time.
+
+
+File: R-exts.info,  Node: Function and variable index,  Next: Concept index,  Prev: Linking GUIs and other front-ends to R,  Up: Top
+
+Function and variable index
+***************************
+
+ [index ]
+* Menu:
+
+* *Riconv_open:                          Re-encoding.         (line  14)
+* .C:                                    Interface functions .C and .Fortran.
+                                                              (line   6)
+* .Call <1>:                             Calling .Call.       (line   6)
+* .Call:                                 Handling R objects in C.
+                                                              (line  21)
+* .External <1>:                         Calling .External.   (line   6)
+* .External:                             Handling R objects in C.
+                                                              (line  21)
+* .First.lib:                            Package subdirectories.
+                                                              (line  38)
+* .Fortran:                              Interface functions .C and .Fortran.
+                                                              (line   6)
+* .Last.lib <1>:                         Load hooks.          (line  15)
+* .Last.lib:                             Package subdirectories.
+                                                              (line  38)
+* .onAttach:                             Load hooks.          (line   9)
+* .onLoad:                               Load hooks.          (line   9)
+* .onUnload:                             Load hooks.          (line  15)
+* .Random.seed:                          Random numbers.      (line   6)
+* \acronym:                              Marking text.        (line 103)
+* \alias:                                Documenting functions.
+                                                              (line  19)
+* \arguments:                            Documenting functions.
+                                                              (line 137)
+* \author:                               Documenting functions.
+                                                              (line 182)
+* \bold:                                 Marking text.        (line  15)
+* \cite:                                 Marking text.        (line  99)
+* \code:                                 Marking text.        (line  31)
+* \command:                              Marking text.        (line  92)
+* \concept:                              Indices.             (line  12)
+* \cr:                                   Sectioning.          (line   7)
+* \deqn:                                 Mathematics.         (line   6)
+* \describe:                             Lists and tables.    (line  14)
+* \description:                          Documenting functions.
+                                                              (line  55)
+* \details:                              Documenting functions.
+                                                              (line 147)
+* \dfn:                                  Marking text.        (line  96)
+* \dontrun:                              Documenting functions.
+                                                              (line 201)
+* \dontshow:                             Documenting functions.
+                                                              (line 202)
+* \dots:                                 Insertions.          (line   6)
+* \dQuote:                               Marking text.        (line  19)
+* \email:                                Marking text.        (line  69)
+* \emph:                                 Marking text.        (line  10)
+* \enc:                                  Insertions.          (line  27)
+* \enumerate:                            Lists and tables.    (line   6)
+* \env:                                  Marking text.        (line  84)
+* \eqn:                                  Mathematics.         (line   6)
+* \examples:                             Documenting functions.
+                                                              (line 192)
+* \file:                                 Marking text.        (line  65)
+* \format:                               Documenting data sets.
+                                                              (line  38)
+* \if:                                   Conditional text.    (line   6)
+* \ifelse:                               Conditional text.    (line   6)
+* \itemize:                              Lists and tables.    (line   6)
+* \kbd:                                  Marking text.        (line  46)
+* \keyword:                              Documenting functions.
+                                                              (line 240)
+* \ldots:                                Insertions.          (line   7)
+* \link:                                 Cross-references.    (line   6)
+* \method:                               Documenting functions.
+                                                              (line  83)
+* \name:                                 Documenting functions.
+                                                              (line  10)
+* \note:                                 Documenting functions.
+                                                              (line 170)
+* \option:                               Marking text.        (line  88)
+* \out:                                  Conditional text.    (line   6)
+* \pkg:                                  Marking text.        (line  62)
+* \preformatted:                         Marking text.        (line  37)
+* \R:                                    Insertions.          (line   6)
+* \RdOpts:                               Dynamic pages.       (line   6)
+* \references:                           Documenting functions.
+                                                              (line 166)
+* \S3method:                             Documenting functions.
+                                                              (line 133)
+* \samp:                                 Marking text.        (line  51)
+* \section:                              Sectioning.          (line  11)
+* \seealso:                              Documenting functions.
+                                                              (line 187)
+* \Sexpr:                                Dynamic pages.       (line   6)
+* \source:                               Documenting data sets.
+                                                              (line  44)
+* \sQuote:                               Marking text.        (line  18)
+* \strong:                               Marking text.        (line  11)
+* \tabular:                              Lists and tables.    (line  20)
+* \title:                                Documenting functions.
+                                                              (line  48)
+* \url:                                  Marking text.        (line  74)
+* \usage:                                Documenting functions.
+                                                              (line  61)
+* \value:                                Documenting functions.
+                                                              (line 152)
+* \var:                                  Marking text.        (line  80)
+* \verb:                                 Marking text.        (line  56)
+* bessel_i:                              Mathematical functions.
+                                                              (line  27)
+* bessel_j:                              Mathematical functions.
+                                                              (line  27)
+* bessel_k:                              Mathematical functions.
+                                                              (line  27)
+* bessel_y:                              Mathematical functions.
+                                                              (line  27)
+* beta:                                  Mathematical functions.
+                                                              (line  17)
+* BLAS_LIBS:                             Using Makevars.      (line  35)
+* browser:                               Browsing.            (line   6)
+* Calloc:                                User-controlled.     (line   6)
+* CAR:                                   Calling .External.   (line  38)
+* CDR:                                   Calling .External.   (line  38)
+* cgmin:                                 Optimization.        (line  38)
+* choose:                                Mathematical functions.
+                                                              (line  21)
+* CITATION <1>:                          Makefile support.    (line  42)
+* CITATION:                              Package subdirectories.
+                                                              (line 127)
+* cPsort:                                Utility functions.   (line  28)
+* debug:                                 Debugging R code.    (line 199)
+* debugger:                              Debugging R code.    (line 116)
+* defineVar:                             Finding and setting variables.
+                                                              (line  32)
+* digamma:                               Mathematical functions.
+                                                              (line   6)
+* dump.frames:                           Debugging R code.    (line 105)
+* duplicate:                             Named objects and copying.
+                                                              (line   6)
+* dyn.load:                              dyn.load and dyn.unload.
+                                                              (line   6)
+* dyn.unload:                            dyn.load and dyn.unload.
+                                                              (line   6)
+* exp_rand:                              Random numbers.      (line   6)
+* expm1:                                 Numerical Utilities. (line  35)
+* export:                                Specifying imports and exports.
+                                                              (line   9)
+* exportClasses:                         Name spaces with S4 classes and methods.
+                                                              (line  13)
+* exportMethods:                         Name spaces with S4 classes and methods.
+                                                              (line  13)
+* exportPattern:                         Specifying imports and exports.
+                                                              (line  19)
+* FALSE:                                 Mathematical constants.
+                                                              (line  42)
+* findInterval:                          Utility functions.   (line  65)
+* findVar:                               Finding and setting variables.
+                                                              (line  24)
+* FLIBS:                                 Using Makevars.      (line  29)
+* fmax2:                                 Numerical Utilities. (line  56)
+* fmin2:                                 Numerical Utilities. (line  57)
+* fprec:                                 Numerical Utilities. (line  68)
+* Free:                                  User-controlled.     (line   6)
+* fround:                                Numerical Utilities. (line  74)
+* fsign:                                 Numerical Utilities. (line  65)
+* ftrunc:                                Numerical Utilities. (line  80)
+* gammafn:                               Mathematical functions.
+                                                              (line   6)
+* gctorture:                             Using gctorture.     (line   6)
+* getAttrib:                             Attributes.          (line  86)
+* getCharCE:                             Character encoding issues.
+                                                              (line  23)
+* GetRNGstate:                           Random numbers.      (line   6)
+* hsv2rgb:                               Utility functions.   (line  85)
+* imax2:                                 Numerical Utilities. (line  54)
+* imin2:                                 Numerical Utilities. (line  55)
+* import:                                Specifying imports and exports.
+                                                              (line  29)
+* importClassesFrom:                     Name spaces with S4 classes and methods.
+                                                              (line  41)
+* importFrom:                            Specifying imports and exports.
+                                                              (line  36)
+* importMethodsFrom:                     Name spaces with S4 classes and methods.
+                                                              (line  41)
+* install:                               Attributes.          (line  97)
+* iPsort:                                Utility functions.   (line  26)
+* ISNA <1>:                              Missing and IEEE values.
+                                                              (line   6)
+* ISNA:                                  Missing and special values.
+                                                              (line  28)
+* ISNAN <1>:                             Missing and IEEE values.
+                                                              (line   6)
+* ISNAN:                                 Missing and special values.
+                                                              (line  28)
+* LAPACK_LIBS:                           Using Makevars.      (line  44)
+* lbeta:                                 Mathematical functions.
+                                                              (line  17)
+* lbfgsb:                                Optimization.        (line  44)
+* lchoose:                               Mathematical functions.
+                                                              (line  21)
+* lgamma1p:                              Numerical Utilities. (line  43)
+* lgammafn:                              Mathematical functions.
+                                                              (line   6)
+* library.dynam <1>:                     dyn.load and dyn.unload.
+                                                              (line  25)
+* library.dynam:                         Package subdirectories.
+                                                              (line  38)
+* log1p:                                 Numerical Utilities. (line  22)
+* log1pmx:                               Numerical Utilities. (line  31)
+* logspace_add:                          Numerical Utilities. (line  47)
+* logspace_sub:                          Numerical Utilities. (line  48)
+* M_E:                                   Mathematical constants.
+                                                              (line   6)
+* M_PI:                                  Mathematical constants.
+                                                              (line   6)
+* mkChar:                                Handling character data.
+                                                              (line  21)
+* mkCharCE:                              Character encoding issues.
+                                                              (line  23)
+* mkCharLen:                             Handling character data.
+                                                              (line  21)
+* mkCharLenCE:                           Character encoding issues.
+                                                              (line  52)
+* NA_REAL:                               Missing and IEEE values.
+                                                              (line   6)
+* nmmin:                                 Optimization.        (line  26)
+* norm_rand:                             Random numbers.      (line   6)
+* OBJECTS <1>:                           Creating shared objects.
+                                                              (line  26)
+* OBJECTS:                               Using Makevars.      (line  69)
+* pentagamma:                            Mathematical functions.
+                                                              (line   6)
+* PKG_CFLAGS:                            Creating shared objects.
+                                                              (line  16)
+* PKG_CPPFLAGS:                          Creating shared objects.
+                                                              (line  15)
+* PKG_CXXFLAGS:                          Creating shared objects.
+                                                              (line  16)
+* PKG_FCFLAGS:                           Creating shared objects.
+                                                              (line  16)
+* PKG_FFLAGS:                            Creating shared objects.
+                                                              (line  16)
+* PKG_LIBS:                              Creating shared objects.
+                                                              (line  20)
+* PKG_OBJCFLAGS:                         Creating shared objects.
+                                                              (line  16)
+* prompt:                                Rd format.           (line  63)
+* PROTECT:                               Garbage Collection.  (line   6)
+* PROTECT_WITH_INDEX:                    Garbage Collection.  (line  91)
+* psigamma:                              Mathematical functions.
+                                                              (line   6)
+* PutRNGstate:                           Random numbers.      (line   6)
+* pythag:                                Numerical Utilities. (line  17)
+* qsort3:                                Utility functions.   (line  50)
+* qsort4:                                Utility functions.   (line  48)
+* R CMD build:                           Building packages.   (line   6)
+* R CMD check:                           Checking packages.   (line   6)
+* R CMD config:                          Configure and cleanup.
+                                                              (line  84)
+* R CMD Rd2dvi:                          Processing Rd format.
+                                                              (line  14)
+* R CMD Rdconv:                          Processing Rd format.
+                                                              (line   9)
+* R CMD Sd2Rd:                           Processing Rd format.
+                                                              (line  21)
+* R CMD SHLIB:                           Creating shared objects.
+                                                              (line   6)
+* R CMD Stangle:                         Processing Rd format.
+                                                              (line  29)
+* R CMD Sweave:                          Processing Rd format.
+                                                              (line  29)
+* R_addhistory:                          Setting R callbacks. (line  89)
+* R_alloc:                               Transient.           (line   6)
+* R_Busy:                                Setting R callbacks. (line  36)
+* R_ChooseFile:                          Setting R callbacks. (line  80)
+* R_CleanUp:                             Setting R callbacks. (line 127)
+* R_ClearErrConsole:                     Setting R callbacks. (line  48)
+* R_csort:                               Utility functions.   (line  13)
+* R_EditFile:                            Setting R callbacks. (line  84)
+* R_ExpandFileName:                      Utility functions.   (line 100)
+* R_FINITE:                              Missing and IEEE values.
+                                                              (line   6)
+* R_FlushConsole:                        Setting R callbacks. (line  47)
+* R_GetCCallable:                        Registering native routines.
+                                                              (line 125)
+* R_INLINE:                              Inlining C functions.
+                                                              (line   6)
+* R_IsNaN:                               Missing and IEEE values.
+                                                              (line   6)
+* R_isort:                               Utility functions.   (line  11)
+* R_LIBRARY_DIR:                         Configure and cleanup.
+                                                              (line 128)
+* R_loadhistory:                         Setting R callbacks. (line  87)
+* R_max_col:                             Utility functions.   (line  56)
+* R_NegInf:                              Missing and IEEE values.
+                                                              (line   6)
+* R_PACKAGE_DIR:                         Configure and cleanup.
+                                                              (line 128)
+* R_ParseVector:                         Parsing R code from C.
+                                                              (line  44)
+* R_PosInf:                              Missing and IEEE values.
+                                                              (line   6)
+* R_pow:                                 Numerical Utilities. (line  10)
+* R_pow_di:                              Numerical Utilities. (line  11)
+* R_qsort:                               Utility functions.   (line  33)
+* R_qsort_I:                             Utility functions.   (line  34)
+* R_qsort_int:                           Utility functions.   (line  35)
+* R_qsort_int_I:                         Utility functions.   (line  36)
+* R_ReadConsole:                         Setting R callbacks. (line  42)
+* R_RegisterCCallable:                   Registering native routines.
+                                                              (line 125)
+* R_registerRoutines:                    Registering native routines.
+                                                              (line  20)
+* R_ResetConsole:                        Setting R callbacks. (line  46)
+* R_rsort:                               Utility functions.   (line  12)
+* R_savehistory:                         Setting R callbacks. (line  88)
+* R_ShowFiles:                           Setting R callbacks. (line  77)
+* R_ShowMessage:                         Setting R callbacks. (line  32)
+* R_Suicide:                             Setting R callbacks. (line 115)
+* R_tmpnam:                              Utility functions.   (line  93)
+* R_Version:                             Platform and version information.
+                                                              (line   6)
+* R_WriteConsole:                        Setting R callbacks. (line  43)
+* R_WriteConsoleEx:                      Setting R callbacks. (line  45)
+* rcont2:                                Random numbers.      (line  43)
+* Rdqagi:                                Integration.         (line  31)
+* Rdqags:                                Integration.         (line  24)
+* Realloc:                               User-controlled.     (line   6)
+* recover:                               Debugging R code.    (line 180)
+* reEnc:                                 Character encoding issues.
+                                                              (line  41)
+* REprintf:                              Printing.            (line   6)
+* REPROTECT:                             Garbage Collection.  (line  91)
+* REvprintf:                             Printing.            (line   6)
+* revsort:                               Utility functions.   (line  22)
+* rgb2hsv:                               Utility functions.   (line  88)
+* Riconv:                                Re-encoding.         (line  19)
+* Riconv_close:                          Re-encoding.         (line  31)
+* Rprintf:                               Printing.            (line   6)
+* Rprof <1>:                             Memory statistics from Rprof.
+                                                              (line   6)
+* Rprof:                                 Profiling R code for speed.
+                                                              (line   6)
+* Rprofmem:                              Tracking memory allocations.
+                                                              (line   6)
+* rPsort:                                Utility functions.   (line  27)
+* rsort_with_index:                      Utility functions.   (line  14)
+* Rvprintf:                              Printing.            (line   6)
+* S3method:                              Registering S3 methods.
+                                                              (line  14)
+* S_alloc:                               Transient.           (line   6)
+* S_realloc:                             Transient.           (line   6)
+* SAFE_FFLAGS:                           Using Makevars.      (line  60)
+* samin:                                 Optimization.        (line  51)
+* seed_in:                               Random numbers.      (line   6)
+* seed_out:                              Random numbers.      (line   6)
+* setAttrib:                             Attributes.          (line  86)
+* setVar:                                Finding and setting variables.
+                                                              (line  32)
+* sign:                                  Numerical Utilities. (line  61)
+* summaryRprof:                          Memory statistics from Rprof.
+                                                              (line   6)
+* system:                                Operating system access.
+                                                              (line   6)
+* system.time:                           Operating system access.
+                                                              (line  13)
+* tetragamma:                            Mathematical functions.
+                                                              (line   6)
+* trace:                                 Debugging R code.    (line 249)
+* traceback:                             Debugging R code.    (line   6)
+* tracemem:                              Tracing copies of an object.
+                                                              (line   6)
+* translateChar:                         Character encoding issues.
+                                                              (line   6)
+* translateCharUTF8:                     Character encoding issues.
+                                                              (line   6)
+* trigamma:                              Mathematical functions.
+                                                              (line   6)
+* TRUE:                                  Mathematical constants.
+                                                              (line  42)
+* undebug:                               Debugging R code.    (line 245)
+* unif_rand:                             Random numbers.      (line   6)
+* UNPROTECT:                             Garbage Collection.  (line   6)
+* UNPROTECT_PTR:                         Garbage Collection.  (line  86)
+* untracemem:                            Tracing copies of an object.
+                                                              (line   6)
+* useDynLib:                             Load hooks.          (line  32)
+* vmaxget:                               Transient.           (line   6)
+* vmaxset:                               Transient.           (line   6)
+* vmmin:                                 Optimization.        (line  32)
+
+
+File: R-exts.info,  Node: Concept index,  Prev: Function and variable index,  Up: Top
+
+Concept index
+*************
+
+ [index ]
+* Menu:
+
+* \linkS4class:                          Cross-references.    (line  20)
+* Allocating storage:                    Allocating storage.  (line   6)
+* Attributes:                            Attributes.          (line   6)
+* Bessel functions:                      Mathematical functions.
+                                                              (line  27)
+* Beta function:                         Mathematical functions.
+                                                              (line  17)
+* Building packages:                     Building packages.   (line   6)
+* C++ code, interfacing:                 Interfacing C++ code.
+                                                              (line   6)
+* Calling C from FORTRAN and vice versa: Calling C from FORTRAN and vice versa.
+                                                              (line   6)
+* Checking packages:                     Checking packages.   (line   6)
+* citation <1>:                          Makefile support.    (line  42)
+* citation:                              Package subdirectories.
+                                                              (line 127)
+* Classes:                               Classes.             (line   6)
+* cleanup file:                          Package structure.   (line  19)
+* conditionals:                          Conditional text.    (line   6)
+* configure file:                        Package structure.   (line  19)
+* COPYING file:                          Package structure.   (line  25)
+* Copying objects:                       Named objects and copying.
+                                                              (line   6)
+* CRAN:                                  Submitting a package to CRAN.
+                                                              (line   6)
+* CRAN submission:                       Submitting a package to CRAN.
+                                                              (line   6)
+* Creating packages:                     Creating R packages. (line   6)
+* Creating shared objects:               Creating shared objects.
+                                                              (line   6)
+* Cross-references in documentation:     Cross-references.    (line   6)
+* cumulative hazard:                     Distribution functions.
+                                                              (line  35)
+* Debugging:                             Debugging compiled code.
+                                                              (line   6)
+* DESCRIPTION file:                      The DESCRIPTION file.
+                                                              (line   6)
+* Details of R types:                    Details of R types.  (line   6)
+* Distribution functions from C:         Distribution functions.
+                                                              (line   6)
+* Documentation, writing:                Writing R documentation files.
+                                                              (line   6)
+* Dynamic loading:                       dyn.load and dyn.unload.
+                                                              (line   6)
+* dynamic pages:                         Dynamic pages.       (line   6)
+* encoding:                              Encoding.            (line   6)
+* Error handling from C:                 Error handling.      (line   6)
+* Error handling from FORTRAN:           Error handling from FORTRAN.
+                                                              (line   6)
+* Evaluating R expressions from C:       Evaluating R expressions from C.
+                                                              (line   6)
+* external pointer:                      External pointers and weak references.
+                                                              (line   9)
+* finalizer:                             External pointers and weak references.
+                                                              (line  42)
+* Finding variables:                     Finding and setting variables.
+                                                              (line   6)
+* Gamma function:                        Mathematical functions.
+                                                              (line   6)
+* Garbage collection:                    Garbage Collection.  (line   6)
+* Generic functions:                     Generic functions and methods.
+                                                              (line   6)
+* handling character data:               Handling character data.
+                                                              (line   6)
+* Handling lists:                        Handling lists.      (line   6)
+* Handling R objects in C:               Handling R objects in C.
+                                                              (line   6)
+* IEEE special values <1>:               Missing and IEEE values.
+                                                              (line   6)
+* IEEE special values:                   Missing and special values.
+                                                              (line   6)
+* INDEX file:                            The INDEX file.      (line   6)
+* Indices:                               Indices.             (line   6)
+* Inspecting R objects when debugging:   Inspecting R objects.
+                                                              (line   6)
+* integration:                           Integration.         (line   6)
+* Interfaces to compiled code <1>:       Interface functions .Call and .External.
+                                                              (line   6)
+* Interfaces to compiled code:           Interface functions .C and .Fortran.
+                                                              (line   6)
+* Interfacing C++ code:                  Interfacing C++ code.
+                                                              (line   6)
+* Interrupts:                            Allowing interrupts. (line   6)
+* LICENCE file:                          Package structure.   (line  25)
+* LICENSE file:                          Package structure.   (line  25)
+* Lists and tables in documentation:     Lists and tables.    (line   6)
+* Marking text in documentation:         Marking text.        (line   6)
+* Mathematics in documentation:          Mathematics.         (line   6)
+* Memory allocation from C:              Memory allocation.   (line   6)
+* Memory use:                            Profiling R code for memory use.
+                                                              (line   6)
+* Method functions:                      Generic functions and methods.
+                                                              (line   6)
+* Missing values <1>:                    Missing and IEEE values.
+                                                              (line   6)
+* Missing values:                        Missing and special values.
+                                                              (line   6)
+* name spaces:                           Package name spaces. (line   6)
+* Numerical analysis subroutines from C: Numerical analysis subroutines.
+                                                              (line   6)
+* Numerical derivatives:                 Calculating numerical derivatives.
+                                                              (line   6)
+* Operating system access:               Operating system access.
+                                                              (line   6)
+* optimization:                          Optimization.        (line   6)
+* Package builder:                       Building packages.   (line   6)
+* Package bundles:                       Package bundles.     (line   6)
+* Package structure:                     Package structure.   (line   6)
+* Package subdirectories:                Package subdirectories.
+                                                              (line   6)
+* Packages:                              Creating R packages. (line   6)
+* Parsing R code from C:                 Parsing R code from C.
+                                                              (line   6)
+* Platform-specific documentation:       Platform-specific sections.
+                                                              (line   6)
+* Printing from C:                       Printing.            (line   6)
+* Printing from FORTRAN:                 Printing from FORTRAN.
+                                                              (line   6)
+* Processing Rd format:                  Processing Rd format.
+                                                              (line   6)
+* Profiling <1>:                         Profiling compiled code.
+                                                              (line   6)
+* Profiling <2>:                         Profiling R code for memory use.
+                                                              (line   6)
+* Profiling:                             Profiling R code for speed.
+                                                              (line   6)
+* Random numbers in C <1>:               Distribution functions.
+                                                              (line  39)
+* Random numbers in C:                   Random numbers.      (line   6)
+* Random numbers in FORTRAN:             Calling C from FORTRAN and vice versa.
+                                                              (line  35)
+* Registering native routines:           Registering native routines.
+                                                              (line   6)
+* Setting variables:                     Finding and setting variables.
+                                                              (line   6)
+* Sort functions from C:                 Utility functions.   (line   6)
+* Submitting to CRAN:                    Submitting a package to CRAN.
+                                                              (line   6)
+* Sweave:                                Writing package vignettes.
+                                                              (line   6)
+* Tidying R code:                        Tidying R code.      (line   6)
+* Version information from C:            Platform and version information.
+                                                              (line   6)
+* vignettes:                             Writing package vignettes.
+                                                              (line   6)
+* Visibility:                            Controlling visibility.
+                                                              (line   6)
+* weak reference:                        External pointers and weak references.
+                                                              (line  65)
+* Zero-finding:                          Zero-finding.        (line   6)
+
+
+
+
+Local Variables:
+coding: iso-8859-1
+End:

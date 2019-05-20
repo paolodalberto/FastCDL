@@ -1,0 +1,14 @@
+#Build the wrapper library using the following command:
+
+cd ../
+make lib
+cd python
+python setup.py build
+
+# This will build the required .c files into:
+
+# build/lib.linux-i686-2.5/anomaly.so
+
+# The anomaly.so shared library should be copied into the site-packages directory
+# of the python distribution or include the directory containing the shared
+# library in the LD_LIBRARY_PATH environment variable.

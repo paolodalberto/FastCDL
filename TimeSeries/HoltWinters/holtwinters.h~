@@ -1,0 +1,82 @@
+#ifndef HOLTWINTERSINTERFACE
+#define HOLTWINTERSINTERFACE
+
+
+
+
+
+struct stateHW { 
+  Mat alpha, beta, gamma; 
+  SinglePoint *yt, *at, *bt, *dt;  
+  unsigned int sizeinbytes;
+  unsigned int code;
+  CircularBuffer *c;
+  CircularBuffer *d;
+};
+
+typedef struct stateHW HoltWinterState;
+
+#define ALLOCATE_HW_STATE(f,N,a,b,g,k) {					\
+    (f) = (HoltWinterState *) calloc(1,sizeof(HoltWinterState));		\
+    assert(f);								\
+    ALLOCATESP((f)->yt); ALLOCATESP((f)->at);                           \
+    ALLOCATESP((f)->bt); ALLOCATESP((f)->dt);                           \
+    if (N>0) { ALLOCATECIRCULAR((f)->c,N,k);} else (f)->c=0;		\
+    if (N>0) { ALLOCATECIRCULAR((f)->d,N,k);} else (f)->d=0;		\
+    (f)->yt= (f)->at = (f)->bt = 0; f->code=1; (f)->dt=0;		\
+    (f)->alpha =a; (f)->beta=b; (f)->gamma=g;				\
+  } 
+
+
+
+
+#define FREE_HW_STATE(f) {					\
+    if (f) {							\
+      if (f->code) {                                            \
+        FREECIRCULAR((f)->d);					\
+        FREECIRCULAR((f)->c);                                   \
+        FREE_SP((f)->yt);FREE_SP((f)->at);                      \
+        FREE_SP((f)->bt);FREE_SP((f)->dt);                      \
+      }					                        \
+      free(f); (f)=0;						\
+    }								\
+} 
+
+
+#define PRINTHWSTATE(t,i)         free(PrintHWState(t,i,1))
+
+
+#ifndef HOLTWINTERS_MODULE
+
+#if defined(c_plusplus) || defined(__cplusplus)
+extern "C" {
+#endif
+
+  extern int HoltWinters(TimeSeries *stream,
+			 HoltWinterState **state,
+			 TimeSeries **ytmOut,
+			 TimeSeries **dtmOut,
+			 int P, 
+			 Mat alpha,
+			 Mat beta,
+			 Mat gamma);
+  
+  // these are for serialization and printing 
+  extern char * PrintHWState(HoltWinterState *t, int identation, int P);
+  extern HoltWinterState * ReadHWState(int identation, char **temp);
+  //  extern void FREE_HW_STATE(HoltWinterState *f);
+#if defined(c_plusplus) || defined(__cplusplus)
+}
+#endif
+
+
+#endif
+
+
+
+
+
+
+
+
+#endif

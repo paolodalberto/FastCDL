@@ -1,0 +1,9 @@
+Package: CDL
+Version: 0.0
+Date: 2010-04-02
+Title: R interface to CDL C library
+Author: Paolo D'Alberto	 <pdalbert@yahoo-inc.com>
+Maintainer: Paolo D'Alberto	 <pdalbert@yahoo-inc.com>
+Depends: R (>= 2.0.1)
+Description: A set of demonstration functions using C, C++, R-code
+License: GPL (version 2 or later)

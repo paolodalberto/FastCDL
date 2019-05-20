@@ -1,0 +1,43 @@
+#include <R.h>
+#include <cdl.h>
+#include <Rinternals.h>
+#include <R_ext/Rdynload.h>
+void
+R_init_mylib(DllInfo *info)
+{
+  Rprintf(" WWWW \n");/* Register routines, allocate resources. */
+}
+void
+R_unload_mylib(DllInfo *info)
+{
+  /* Release resources. */
+}
+
+void scalarFR(int *x, double *y, int *n, 
+	     int *method,  double *xout, double *ym, double *pvalue, 
+	     double *params, int *np,
+	     char *stateString) { 
+  
+  void *state;
+  int result;
+  GeneralizedOutput *oo;
+  
+  TimeSeries ts;
+
+  ts.x = (Xorder*) x;
+  ts.y = (Mat *)   y;
+  ts.length = ts.max = *n;
+
+  state = READ_STATE(*method,&stateString);
+
+  result = scalarF(&ts,*method,&state,&oo,params);
+
+  memcpy(ym,oo->y,sizeof(Mat)*oo->length);
+  memcpy(xout,oo->x,sizeof(Mat)*oo->length);
+  memcpy(pvalue,oo->pvalue,sizeof(Mat)*oo->length);
+  
+  FREE_GEN_OUTPUT(oo);
+  
+  stateString = WRITE_STATE(*method,state);
+  
+}

@@ -1,0 +1,9 @@
+Package: stats
+Version: 2.10.1
+Priority: base
+Title: The R Stats Package
+Author: R Development Core Team and contributors worldwide
+Maintainer: R Core Team <R-core@r-project.org>
+Description: R statistical functions
+License: Part of R 2.10.1
+Built: R 2.10.1; x86_64-unknown-linux-gnu; 2010-05-03 19:14:42 UTC; unix

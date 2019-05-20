@@ -1,0 +1,103 @@
+/******************************************************
+  Copyright 2019 Paolo D'Alberto.
+
+  This file is part of the Fast Change Detection Library
+  (Multidimensional) FastCDL
+
+  FastCDL is free software: you can redistribute it and/or modify it
+  under the terms of the GNU Lesser General Public License as
+  published by the Free Software Foundation, either version 3 of the
+  License, or (at your option) any later version.
+
+  FastCDL is distributed in the hope that it will be useful, but
+  WITHOUT ANY WARRANTY; without even the implied warranty of
+  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+  Lesser General Public License for more details.
+
+  You should have received a copy of the GNU Lesser General Public
+  License along with FastCDL.  If not, see <http://www.gnu.org/licenses/>.
+
+*/
+#define GETTIME 1
+#include <type.h>
+#include <sort.h>
+#include <quicksort.h>
+#include <stdlib.h>
+#include <stdio.h>
+#include <doubly_compensated_sumc.h>
+
+Mat *randomTimeseries(int N) { 
+
+  int i;
+  Mat *x = (Mat *) calloc(N,sizeof(Mat));
+
+  for (i=0;i<N;i++) { 
+    x[i] = (Mat) drand48()*((rand()%2)?1:-1);
+  }
+
+  return x;
+} 
+
+static int debug =0;
+
+#define MAX(x,y) (((x)<(y))?(y):(x))
+
+
+int main() {
+
+  int N,T; 
+  int n,t; 
+  Mat s0,s1,s2,s3;
+  Mat ms0,ms1,ms2,ms3;
+  Mat mms0,mms1,mms2,mms3;
+  
+  ms0 = ms1 = ms2 = ms3 = 0;
+
+  printf("Introduce N\n");
+  scanf("%d",&N);
+
+
+  printf("Introduce T\n");
+  scanf("%d",&T);
+
+  for (t=0;t<T;t++) { 
+    
+    Mat *x = randomTimeseries(N) ;
+    s0 = sum(x,N);
+    s1 = dcsum(x,N);
+    if (debug) print(x,N);
+    s2 = sorted_dcsum(x,N);
+    if (debug) print(x,N);
+    s3 = sorted_sum(x,N);
+    if (debug) print(x,N);
+    printf("sum %e dcsum %e sdcsum %e ssum %e\n",s0,s1,s2,s3);
+
+    ms0 += fabs(s0-s1);
+    ms1 += fabs(s0-s2);
+    ms2 += fabs(s0-s3);
+    ms3 += fabs(s1-s2);
+    
+    mms0 = MAX(fabs(s0-s1),mms0);
+    mms1 = MAX(fabs(s0-s2),mms1);
+    mms2 = MAX(fabs(s0-s3),mms2);
+    mms3 = MAX(fabs(s2-s3),mms3);
+    
+    
+     
+    free(x);
+  }
+  
+  ms0 /=T;
+  ms1 /=T;
+  ms2 /=T;
+  ms3 /=T;
+
+  printf("\n sum-dcsum %e sum-sdcsum %e sum-ssum %e dsum-sdsum %e\n",ms0,ms1,ms2,ms3);
+  printf("\n max sum-dcsum %e max sum-sdcsum %e max sum-ssum %e max sdsum-ssum %e\n",mms0,mms1,mms2,mms3);
+
+
+
+
+  return 0;
+
+}

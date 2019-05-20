@@ -1,0 +1,9 @@
+#Build the wrapper library using the following command:
+
+cd ../
+make lib
+cd python
+sudo python setup.py install
+
+
+

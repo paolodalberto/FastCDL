@@ -1,0 +1,10 @@
+* install options are ' --no-html'
+
+* installing *source* package 'test' ...
+** libs
+** arch - 
+Makefile:78: warning: overriding commands for target `.c.o'
+/export/crawlspace/Paolo/Martigale/FastLibrary_6/R/R-2.10.1/etc/Makeconf:106: warning: ignoring old commands for target `.c.o'
+make: *** No rule to make target `/export/crawlspace/Paolo/Martigale/FastLibrary_6/R/R-2.10.1/library/CDL/src/../../..//Summation/doubly_compensated_sumc.o', needed by `lib'.  Stop.
+ERROR: compilation failed for package 'test'
+* removing '/export/crawlspace/Paolo/Martigale/FastLibrary_6/R/R-2.10.1/library/CDL.Rcheck/test'

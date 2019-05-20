@@ -1,0 +1,17 @@
+#ifndef __CDL__
+#define __CDL__ 1
+
+#define GETTIME 1
+#include <type.h>
+#include <distance.h>
+#include <interface.h>    
+#include <sort.h>
+#include <quicksort.h>
+#include <doubly_compensated_sumc.h>
+#include <timeseries.h>
+#include <holtwinters.h>
+#include <nonparametric.h>
+#include <window.h>
+#include <math.h>
+
+#endif

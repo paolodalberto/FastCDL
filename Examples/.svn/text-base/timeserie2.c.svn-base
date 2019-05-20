@@ -1,0 +1,331 @@
+#define GETTIME 1
+#include <cdl.h>
+
+
+#include <stdlib.h>
+#include <stdio.h>
+#include <math.h>
+
+Mat input[120] = {  
+  0, 0, 0, 0, 0,1,2,3,4, 5, 6, 7, 8, 9, 10,11,12,13,14,15,16,17,18,19,20,21, 22,23,24, 0, 
+  0, 0, 0, 0, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9,10,11,12,13,14,15,  16,17,18,19,20,21,22,23,24, 0, 
+  0, 0,  0, 0, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9,  10,11,12,13,14,15,16,17,18,19,20,21,  22,23,24, 0, 
+  0, 0, 0, 0, 0, 1, 2, 3,  4,  5,  6,  7,  8,  9, 10, 11, 12, 13,  14, 15, 16, 17, 18, 19, 20, 21, 22, 23,  24,  0 };
+
+#define NONPA 1
+#define HWTEST 2
+#define MATEST 3
+#define MARTINGALETEST 4
+#define pi     3.1462
+int operation;
+
+TimeSeries *randomTimeseries(int N, int start , int k) { 
+  static int j=0;
+  int i;
+  TimeSeries *t;
+
+  ALLOCATETS(t,N);
+
+  
+  for (i=0;i<N;i++) { 
+    t->x[i] = start+i;  
+
+    t->y[i] = (Mat) drand48()+5*sin(2*pi*(i+j)/200);
+  }
+  t->length = N;
+  j += N;
+  return t;
+} 
+
+
+
+char *readfile(FILE *F) { 
+
+  int size = 1024;
+  char *temp = (char*) calloc(size,sizeof(char));
+  int c,i=0;
+  
+  while ((c = fgetc(F)) != EOF) {
+    
+    if (i<size)  {temp[i]=(char) c; }
+    else {  
+      size = 2*size;
+      char *k =  (char*) calloc(size,sizeof(char));
+      strcpy(k,temp);
+      free(temp);
+      temp = k;
+      temp[i]=(char) c;
+    }
+    i++;
+  }
+
+  return temp;
+}
+
+int length(char *t) { 
+  int i=0;
+  while (t[i]!=0) { i++;} 
+
+  return i+1;
+
+}
+
+int main() { 
+  int i,l,j;
+  double time;
+  int size;
+  int debug =0;
+
+
+  Mat nonparameters[3] = {16, 16,1};
+  Mat Hw[6] = {16, 0.3, 0.2, 0.4, 2, BOTHSIDE};
+  Mat Hw2[6] = {30, 0.3, 0.1, 0.2, 3, BOTHSIDE};
+  GeneralizedOutput *o[3];
+  GeneralizedOutput *oo;
+  MovingAverageState *mas=0,*serma=0;
+  HoltWinterState *hws=0,*serhw=0;
+  NonParametricState *nps=0, *ser=0, *ser2;
+  MartingaleState *marts=0;
+  
+
+  int response[3]= {0, 0,0}; 
+  Window     *r, *w, *s,*e1,*e2;
+  TimeSeries *tr, *tw, *ts;
+  FILE *stateN, *stateHW,*stateMA,*stateMartingale;
+  unsigned int bytes;
+  char *th,*temp;
+
+  char *permopen = "rb+";
+  char *permwrite = "wb+";
+
+  printf("NP %d \n",sizeof(NonParametricState));
+  printf("HW %d \n",sizeof(HoltWinterState));
+  printf("W %d \n",sizeof(Window));
+  printf("TS %d \n",sizeof(TimeSeries));
+  printf("SW %d \n",sizeof(StatisticalWindow));
+  printf("CB %d \n",sizeof(CircularBuffer));
+  printf("SHW %d \n",sizeof(HoltWinterState));
+  printf("SNON %d \n",sizeof(NonParametricState));
+
+  printf("int    %d \n",sizeof(int));
+  printf("long   %d \n",sizeof(long int));
+  printf("float  %d \n",sizeof(float));
+  printf("double %d \n",sizeof(double));
+
+
+  printf("operation NONPA 1/HWTEST 2/Moving average 3/ Martingale 4/ALL 0\n");
+  scanf("%d",&operation);
+
+
+
+  if (!operation || operation ==MARTINGALETEST) {
+    
+    stateMartingale  = fopen("martingale.bin",permopen);
+    if (stateMartingale) { 
+      
+      th = temp = readfile(stateMartingale);
+      fclose(stateMartingale);
+      printf("%s \n",temp);
+
+      marts =   ReadMARPState(0,&temp);
+      free(th);
+      
+      PRINTMARTINGALESTATE(marts);
+      
+
+    }
+  }
+
+
+
+
+  if (!operation || operation ==NONPA) {
+    
+    stateN  = fopen("Nstate.bin",permopen);
+    if (stateN) { 
+      
+      th = temp = readfile(stateN);
+      fclose(stateN);
+      printf("%s \n",temp);
+
+      nps =   ReadNONPState(0,&temp);
+      free(th);
+      //PRINTNONPSTATE(nps,0);
+    }
+  }
+
+  if (!operation || operation ==HWTEST) {
+
+    stateHW  = fopen("c.bin",permopen);
+    if (stateHW) { 
+      th = temp = readfile(stateHW);
+      fclose(stateHW);
+      printf("%s \n",temp);
+      hws =   ReadHWState(0,&temp);
+      free(th);
+      PRINTHWSTATE(hws,0);
+    }
+ 
+  }
+
+  if (!operation || operation ==MATEST) {
+
+    stateMA  = fopen("d.bin",permopen);
+    if (stateMA) { 
+      th = temp = readfile(stateMA);
+      fclose(stateMA);
+      printf("%s \n",temp);
+      mas =   ReadMAState(0,&temp);
+      free(th);
+      PRINTMASTATE(mas,0);
+    }
+ 
+  }
+  
+  printf("P\n");
+  scanf("%d",&size);
+  
+  nonparameters[0] = nonparameters[1] = size;
+  Hw[0] = size;
+  
+  
+  srand48(3);
+  printf("times\n");
+  scanf("%d",&i);
+  
+  // tr = randomTimeseries(size,0);
+  
+  if (!operation || operation ==MARTINGALETEST) {
+    printf(" Martingale %d\n",operation);
+
+    int time=0;
+    
+    for (j=0;j<i;j++) { 
+      
+      tr = randomTimeseries(size,time,j);
+      PRINTTIMESERIES(tr,0);
+      scalarF(tr,MartingaleMethod,(void**)&marts,&oo,nonparameters);
+      
+      if (debug) PRINTMARTINGALESTATE(marts);
+      PrintGeneralizedOutput(oo);
+      FREETS(tr);
+      FREE_GEN_OUTPUT(oo) ;
+      time +=size;
+    }
+    
+        
+
+
+    temp = PrintMartingaleState(marts,0,0);
+    
+    stateMartingale  = fopen("martingale.bin",permwrite);
+    fwrite(temp,sizeof(char),length(temp),stateMartingale);
+    fclose(stateMartingale);
+    
+    
+    free(temp);
+    temp =0; 
+    FREE_MARTINGALE_STATE(marts);
+    
+  }  
+
+  if (!operation || operation ==NONPA) {
+    printf(" NONPA %d\n",operation);
+
+    int time=0;
+    
+    for (j=0;j<i;j++) { 
+      
+      tr = randomTimeseries(size,time,j);
+      //      PRINTTIMESERIES(tr,0);
+      scalarF(tr,NonParametricMethod,(void**)&nps,&oo,nonparameters);
+      
+      if (debug) PRINTNONPSTATE(nps,0);
+      PrintGeneralizedOutput(oo);
+      FREETS(tr);
+      FREE_GEN_OUTPUT(oo) ;
+      time +=size;
+    }
+    
+    
+    temp = PrintNONPState(nps,0,0);
+    
+    stateN  = fopen("Nstate.bin",permwrite);
+    fwrite(temp,sizeof(char),length(temp),stateN);
+    fclose(stateN);
+    
+    
+    free(temp);
+    temp =0; 
+    FREE_NONP_STATE(nps);
+    
+  }  
+  
+  if (!operation || operation ==HWTEST) {
+    int time=0;
+    printf(" HWTEST %d\n",operation);
+ 
+    
+    for (j=0;j<i;j++) { 
+      tr = randomTimeseries(size,time,j); 
+      if (debug) PRINTTIMESERIES(tr,0);
+      scalarF(tr,HoltWintersMethod,(void**)&hws,&oo,Hw);
+      FREETS(tr);
+      
+      PrintGeneralizedOutput(oo);
+      FREE_GEN_OUTPUT(oo) ;
+      time +=size;
+
+    }
+
+    temp = PrintHWState(hws,0,0);
+    
+    stateHW  = fopen("c.bin",permwrite);
+    fwrite(temp,sizeof(char),length(temp),stateHW);
+    fclose(stateHW);
+    
+    free(temp); temp = 0;
+    FREE_HW_STATE(hws);
+
+  }
+
+  Hw[KPLACE] = 3;
+  if (!operation || operation ==MATEST) {
+    int time=0;
+    char *state;
+    printf(" MATEST %d\n",operation);
+    
+    for (j=0;j<i;j++) { 
+      printf(" iteration %d\n",j);
+      tr = randomTimeseries(size,time,j); 
+      if (debug) PRINTTIMESERIES(tr,0);
+      scalarF(tr,MovingAverageMethod,(void**)&mas,&oo,Hw);
+      FREETS(tr);
+      if (debug)  {
+	printf(" STate \n ");
+	PRINTMASTATE(mas,10);
+      }
+      
+      PrintGeneralizedOutput(oo);
+      FREE_GEN_OUTPUT(oo) ;
+      time +=size;
+
+    }
+
+    temp = PrintMAState(mas,0,0);
+    
+    stateMA  = fopen("d.bin",permwrite);
+    fwrite(temp,sizeof(char),length(temp),stateMA);
+    fclose(stateMA);
+    
+    free(temp); temp = 0;
+    FREE_MA_STATE(mas);
+   
+
+  }
+  
+
+
+
+  return 0;
+}

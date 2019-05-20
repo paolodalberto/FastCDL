@@ -1,0 +1,13 @@
+* using log directory '/export/crawlspace/Paolo/Martigale/FastLibrary_6/R/R-2.10.1/library/CDL.Rcheck'
+* using R version 2.10.1 (2009-12-14)
+* using session charset: ASCII
+* checking for file 'CDL/DESCRIPTION' ... OK
+* this is package 'test' version '0.0'
+* checking package name space information ... OK
+* checking package dependencies ... OK
+* checking if this is a source package ... WARNING
+Subdirectory 'CDL/src' contains object files.
+* checking for executable files ... OK
+* checking whether package 'test' can be installed ... ERROR
+Installation failed.
+See '/export/crawlspace/Paolo/Martigale/FastLibrary_6/R/R-2.10.1/library/CDL.Rcheck/00install.out' for details.

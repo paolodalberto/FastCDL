@@ -1,0 +1,23 @@
+#ifndef MARTINGALEPDF
+#define MARTINGALEPDF 1
+
+
+#include<window.h>
+#include<martingale.h>
+
+#ifndef MARTINGALEPDF_MODULE
+
+#if defined(c_plusplus) || defined(__cplusplus) 
+extern "C" {
+#endif
+  extern double pdfbased_distance_pvalue(TimeSeries *ts, SinglePoint *sp, void *state);
+  extern int binary_search_array(double *array, double  sp, int stat_len);
+  extern Adj* pdf_based_on_distance(TimeSeries *ts, unsigned int N, Adj *s);
+#if defined(c_plusplus) || defined(__cplusplus) 
+}
+#endif 
+
+#endif //#ifndef MARTINGALEPDF_MODULE
+
+
+#endif
