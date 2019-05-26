@@ -61,7 +61,7 @@ there are
 These two methods compare distribution, with p-values and with quorum.
 It depends on the settings and how you built the library, you may use
 a few CDF distance measure.
-
+```c
   double phiofA(Mat *r, Mat *w, int n);
   double KsiofA(Mat *r, Mat *w, int n);
   double KolmogorovSmirnov(  Mat *r, Mat *w, int n);
@@ -80,3 +80,4 @@ a few CDF distance measure.
   double Euclide(Mat *r, Mat *w, int n);
   double Minkowsky(Mat *r, Mat *w, int n, double p);
   double Camberra(Mat *r, Mat *w, int n); 
+```
