@@ -12,8 +12,9 @@ library than to rewrite the library.
 # Time Series
 
 There is one basic interface 
-
+```c
     int scalarF(TimeSeries *stream,int Methods, void **state,GeneralizedOutput **out, Mat *parameters)
+```
 
 and there is a basic interface using only standard and low level
 types. With the right combination of an integer value in the Methods
@@ -51,12 +52,12 @@ pure time series).
 # Distributions
 
 there are 
-
+```c
     double* distanceHistograms(Histogram *sh1,
                                Histogram *sh2)
     double* distanceHistogramsQ(Histogram *sh1,
                                Histogram *sh2)
-
+```
 
 These two methods compare distribution, with p-values and with quorum.
 It depends on the settings and how you built the library, you may use
