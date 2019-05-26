@@ -62,21 +62,21 @@ These two methods compare distribution, with p-values and with quorum.
 It depends on the settings and how you built the library, you may use
 a few CDF distance measure.
 
-  extern double phiofA(Mat *r, Mat *w, int n);
-  extern double KsiofA(Mat *r, Mat *w, int n);
-  extern double KolmogorovSmirnov(  Mat *r, Mat *w, int n);
-  extern double KullbackLeiberI(Mat *r, Mat *w, int n);
-  extern double KullbackLeiberI(Mat *r, Mat *w, int n);
-  extern double JinK(Mat *r, Mat *w, int n);
-  extern double JinL(Mat *r, Mat *w, int n);
-  extern double JensenShannonDivergence(Mat *r, Mat *w, int n);
-  extern double ChiSquare(Mat *r, Mat *w, int n);
-  extern double Hellinger(Mat *r, Mat *w, int n);
-  extern double Bhattacharyya(Mat *r, Mat *w, int n);
-  extern double GeneralizedKs(Mat *r, Mat *w, int n, double s);
-  extern double GeneralizedKr(Mat *r, Mat *w, int n, double s);
-  extern double GeneralizedK2s(Mat *r, Mat *w, int n, double s);
-  extern double CramerVonMises(Mat *r, Mat *w, int n);
-  extern double Euclide(Mat *r, Mat *w, int n);
-  extern double Minkowsky(Mat *r, Mat *w, int n, double p);
-  extern double Camberra(Mat *r, Mat *w, int n); 
+  double phiofA(Mat *r, Mat *w, int n);
+  double KsiofA(Mat *r, Mat *w, int n);
+  double KolmogorovSmirnov(  Mat *r, Mat *w, int n);
+  double KullbackLeiberI(Mat *r, Mat *w, int n);
+  double KullbackLeiberI(Mat *r, Mat *w, int n);
+  double JinK(Mat *r, Mat *w, int n);
+  double JinL(Mat *r, Mat *w, int n);
+  double JensenShannonDivergence(Mat *r, Mat *w, int n);
+  double ChiSquare(Mat *r, Mat *w, int n);
+  double Hellinger(Mat *r, Mat *w, int n);
+  double Bhattacharyya(Mat *r, Mat *w, int n);
+  double GeneralizedKs(Mat *r, Mat *w, int n, double s);
+  double GeneralizedKr(Mat *r, Mat *w, int n, double s);
+  double GeneralizedK2s(Mat *r, Mat *w, int n, double s);
+  double CramerVonMises(Mat *r, Mat *w, int n);
+  double Euclide(Mat *r, Mat *w, int n);
+  double Minkowsky(Mat *r, Mat *w, int n, double p);
+  double Camberra(Mat *r, Mat *w, int n); 
