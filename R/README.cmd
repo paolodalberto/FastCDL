@@ -39,7 +39,7 @@ behavior of the time series and this little demo will not convey much
 the different power of the methods. In the following, creatM is a
 function creating a time series that increase in average exponentially
 
-```
+```r
 
 SmolatestXMEarlyP(10,5,createM,"Non-Parametric",300)
 SmolatestXMEarlyP(10,5,createM,"Kernels",300)
