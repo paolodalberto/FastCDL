@@ -27,7 +27,7 @@ sudo R CMD INSTALL CDL_0.1.tar.gz
 In practice, you do not need to have sudo privileges. But I like to
 have a clean installation and clean import. Now, you can 
 
-```
+```r
 R
 library(CDL)
 ```
@@ -51,7 +51,7 @@ SmolatestXMEarlyP(10,5,createM,"Holt-Winters",300)
 
 This should give an taste of the different approaches. They use the
 default parameters written in CDLR.R files
-```
+```r
  * HoltWintersMethod       0    P = { 1, 1.0, 0.0, 0.0, 1, BOTHSIDE }                                                                                                                        
 # * NonParametricMethod     1    P = (Rsize, Wsize, 1, Ratio=0.2, MST=0/POS=1,1.0)                                                                                                            
 # * MovingAverageMethod     2    P = { 1, 1.0, 0.0, 0.0, 1, BOTHSIDE }                                                                                                                        
