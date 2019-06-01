@@ -39,7 +39,7 @@ behavior of the time series and this little demo will not convey much
 the different power of the methods. In the following, creatM is a
 function creating a time series that increase in average exponentially
 
-```R
+```
 
 SmolatestXMEarlyP(10,5,createM,"Non-Parametric",300)
 SmolatestXMEarlyP(10,5,createM,"Kernels",300)
@@ -51,7 +51,7 @@ SmolatestXMEarlyP(10,5,createM,"Holt-Winters",300)
 
 This should give an taste of the different approaches. They use the
 default parameters written in CDLR.R files
-```R
+```
  * HoltWintersMethod       0    P = { 1, 1.0, 0.0, 0.0, 1, BOTHSIDE }                                                                                                                        
 # * NonParametricMethod     1    P = (Rsize, Wsize, 1, Ratio=0.2, MST=0/POS=1,1.0)                                                                                                            
 # * MovingAverageMethod     2    P = { 1, 1.0, 0.0, 0.0, 1, BOTHSIDE }                                                                                                                        
