@@ -79,7 +79,7 @@ comparisons of two D-dimensional samples. For example,
 
 ```r
 source("CDLR.R")
-exampleSimple(150,400,500)
+exampleSimple(150,400,500,"temp.png")
 ```
 
 The example, creates a sample of 400 vectors with dimension 150. This
@@ -92,3 +92,5 @@ IF you inspect the example and how the code produces the result
 (time,response, and p-value) you can appreciate the plots better and
 how you can use the interface to compare M and N samples (of same
 dimensions).
+
+![Alt text](R/CDL/R/temp.png?raw=true "Title")

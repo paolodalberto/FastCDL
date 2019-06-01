@@ -498,18 +498,22 @@ dis <- function(e,v) {
     
 }
 
-exampleSimple <- function(d,M,N) {
+exampleSimple <- function(d,M,N, fname) {
     state = ""
     REf = createRN(d,M, 3,2)
     Sec = createRN(d,N, 3,5)
     time = createToCompareTwoDistributions(REf,Sec)
     Method = "Non-Parametric" 
     r = scalarFR(time,c(M,N,1,0.2,0,1),methodCode(Method),state);
+
+    png(file=fname, width=14, height=10,units="in",bg="transparent",res=120)
     visualize3(time, r,c(N,M,1,0.2,0,1),
                lg = (Method =="Martingale"),
                t = Method,
                INT = c(M,M+M,M+M+N))
+    dev.off()
 
+    
 }
 
 createRN <- function(d,N,m,s) {
