@@ -21,9 +21,6 @@
 # * 
 
 
-
-
-
 # examples of parameters array 
 PHW  = c(0, 0.3, 0.2, 0, 2, 0)     # Holt-Winters
 PNON = c(200,200,1,0.2,0,1.0)      # Non-Parametric 
@@ -770,7 +767,11 @@ SmolatestXMEarlyP<- function(d,times,create,M,N) {
     
     P = PKS
     
-  } else  { }
+  } else if (M=="Holt-Winters") {
+      P = PHW   
+  }
+  else  {
+  }
 
   h = (1:times)*0
   for (i in 1:times) {

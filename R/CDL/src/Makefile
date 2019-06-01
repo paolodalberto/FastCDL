@@ -7,10 +7,10 @@
 
 # Code root directory 
 
+# Please change the HOMEDIR with an absolute path 
 
+HOMEDIR = /home/paolo/Desktop/FastCDL/FastCDL
 
-HOMEDIR = /home/paolo/Desktop/FastCDL/FastLibrary_9_Multidimensional
-#HOMEDIR = /home/paolo/Martingale/FastLibrary_7/
 RDIR = $(HOMEDIR)/R/CDL/src/
 RCOMMAND=/usr/bin/R
 
