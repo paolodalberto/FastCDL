@@ -93,4 +93,4 @@ IF you inspect the example and how the code produces the result
 how you can use the interface to compare M and N samples (of same
 dimensions).
 
-![Alt text](R/CDL/R/temp.png?raw=true "Title")
+![alt text](https://github.com/paolodalberto/FastCDL/blob/master/R/CDL/R/temp.png)
