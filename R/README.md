@@ -87,3 +87,8 @@ is the Reference *R*. It creates a sample of 500 vectors with
 dimension 150, this is what we want to compare *D* and it creates a
 time series *R+R+D* and it going to compute two measures *R* vs *R*
 and *R* vs *D*. 
+
+IF you inspect the example and how the code produces the result
+(time,response, and p-value) you can appreciate the plots better and
+how you can use the interface to compare M and N samples (of same
+dimensions).
