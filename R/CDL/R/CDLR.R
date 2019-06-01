@@ -498,6 +498,46 @@ dis <- function(e,v) {
     
 }
 
+exampleSimple <- function(d,M,N) {
+    state = ""
+    REf = createRN(d,M, 3,2)
+    Sec = createRN(d,N, 3,5)
+    time = createToCompareTwoDistributions(REf,Sec)
+    r = scalarFR(time,c(M,N,1,0.2,0,1),methodCode("Non-Parametric"),state);
+    visualize2(time,r,c(N,M,1,0.2,0,1))
+}
+
+createRN <- function(d,N,m,s) {
+
+    time = array(0,dim=c(d,N))
+    time[1,] = 1:N
+    for (i in 2:d) {
+        time[i,1:N] = rnorm(N,m,s); 
+    }
+
+    time
+}
+    
+
+
+createToCompareTwoDistributions <- function(RM, DM) {
+    T0 = length(RM[1,])
+    T =  T0+T0
+    l = T + length(DM[1,])
+    print(l)
+    d = length(RM[,1])
+    time = array(0,dim=c(d,l))
+    time[1,] = 1:l
+
+  
+    for (i in 2:d) {
+        time[i,1:T0] = RM[i,1:T0]
+        #print(c(length(time[i,T0:T]),T0))
+        time[i,(T0+1):T] = RM[i,1:T0]
+        time[i,(T+1):l] = DM[i,]
+    }
+    time
+}
 
 
 

@@ -72,6 +72,18 @@ PKER = c(250,250,1,0)              # Kernel
 
 
 You could manipulate the methods. The non parametric uses by default
-the MST approach PNON[5]=0. 
+the MST approach PNON[5]=0.
 
+I want to share the library because anyone could use methods for the
+comparisons of two D-dimensional samples. For example,
 
+```r
+source("CDLR.R")
+exampleSimple(150,400,500)
+```
+
+The example, creates a sample of 400 vectors with dimension 150. This
+is the Reference *R*. It creates a sample of 500 vectors with
+dimension 150, this is what we want to compare *D* and it creates a
+time series *R+R+D* and it going to compute two measures *R* vs *R*
+and *R* vs *D*. 
