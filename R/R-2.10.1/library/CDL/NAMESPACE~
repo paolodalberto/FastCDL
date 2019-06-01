@@ -1,2 +1,0 @@
-useDynLib(cdl)
-export(scalarFR)

@@ -1,2 +1,0 @@
-useDynLib(cdlR)
-export(scalarFR,ExtendedCompareHistogram,CompareHistogram,CompareCDFs,CompareHistogramNumeric,visualize,visualize2,methodCode,createM,createV,SmolatestXM,SmolatestXMEarly,M1,M2)
