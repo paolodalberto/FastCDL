@@ -503,8 +503,13 @@ exampleSimple <- function(d,M,N) {
     REf = createRN(d,M, 3,2)
     Sec = createRN(d,N, 3,5)
     time = createToCompareTwoDistributions(REf,Sec)
-    r = scalarFR(time,c(M,N,1,0.2,0,1),methodCode("Non-Parametric"),state);
-    visualize2(time,r,c(N,M,1,0.2,0,1))
+    Method = "Non-Parametric" 
+    r = scalarFR(time,c(M,N,1,0.2,0,1),methodCode(Method),state);
+    visualize3(time, r,c(N,M,1,0.2,0,1),
+               lg = (Method =="Martingale"),
+               t = Method,
+               INT = c(M,M+M,M+M+N))
+
 }
 
 createRN <- function(d,N,m,s) {
