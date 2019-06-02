@@ -13,7 +13,7 @@ make clean
 # We build the R Module: R needs -DRDEF 
 
 I noticed that to have a complete installation is better to have a
-full path: set the HOMEDIR to the C library path FastCDL
+full path: set the *HOMEDIR* to the C library path FastCDL
 
 ```
 cd R/CDL/src
