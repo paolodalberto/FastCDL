@@ -84,6 +84,7 @@ PrintCompressState(KolmogorovState *s, int identation, int P) {
     IDENTS(identation,temp,line);SPRINTNA(temp,line,"SKOL B 0 \n");
     IDENTS(identation,temp,line);SPRINT(temp,line,"Boot max: %d\n",s->BMAX);
     IDENTS(identation,temp,line);SPRINT(temp,line,"Baseline : %d\n",s->baseline);
+    for (int i=0;i<COL;i++) { IDENTS(identation,temp,line);SPRINT(temp,line,"B : %e\n",s->boundaries[i]); }
     //IDENTS(identation,temp,line); if (s->r) {SPRINT(temp,line,"R %s \n",s->r);} else {SPRINTNA(temp,line,"R \n");} 
     //IDENTS(identation,temp,line); if (s->w) {SPRINT(temp,line,"W %s \n",s->w);} else {SPRINTNA(temp,line,"W \n");}
     val = PrintNONPState(s->s, 3, 0);
@@ -132,6 +133,7 @@ ReadKOLState(int identation, char **temp) {
     sscanf(running,"Baseline : %d",&(t->baseline));
     running +=n+1;
     
+    for (int i=0;i<COL;i++) { FINDSLASHN(running,n); running[n] = 0; sscanf(running,"B : %lf",&(t->boundaries[i]));running +=n+1; }
     t->s = ReadNONPState(identation+3,&running);
     
     (t)->r = (char *)(t)->s->r->ts->data_anchor;      
@@ -396,16 +398,18 @@ int compressionDistance(TimeSeries *stream,
     if (!s->baseline && s->s->w->ts->length == s->s->r->ts->length && s->BMAX >0) { 
       PRINTF("Boot strap  \n");
       bootstrap_compression(s,zlib_compress);
+      //
       s->baseline = 1;
 
-
     } 
+    
     // The extended window share data with the original windo please
    
  
 
     res = normalized_compression_difference_measure(s->r,s->lr,s->w,s->lw,zlib_compress);
-    
+    if (debug)  { PRINTF("RES %f  \n", res ); }
+
 
 
     ALLOCATETS(v,1,1);

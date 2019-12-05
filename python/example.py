@@ -12,12 +12,13 @@ while (i<len(x)):
     t.append((x[i],y2[i]))
     i += 1
 
-print s,t
+print(s,t)
+print(type(s),type(s[0]),type(t))
 a = anomaly.histogram_comp(s,t)
-print a
+print(a)
 a = anomaly.histogram_comp(s,s)
 
-print a
+print(a)
     
 X = range(0,60)
 Y = []
@@ -31,51 +32,51 @@ state= None
 dim = 2
 
 F = anomaly.holtwinters(state,Y,P,dim)
-print "HW %%%%%%"
-print F
-print "%%%%%%"
-print F[0]
+print( "HW %%%%%%")
+print( F)
+print( "%%%%%%")
+print(F[0])
 for f in F[1]:
-    print "HW",f
+    print("HW",f)
 
 state= None
 T = [ 10, 0.5, 0.5, 0.5, 1, 1] 
 
 
 F = anomaly.general_anomaly(0,state,Y,T,dim)
-print "HWA %%%%%%"
-print F
-print "%%%%%%"
+print("HWA %%%%%%")
+print(F)
+print("%%%%%%")
 
-print F[0]
+print(F[0])
 for f in F[1]:
-    print "HWA",f
+    print ("HWA",f)
 
-print "----------------------------------------------------------"
+print("----------------------------------------------------------")
 
 NP = [20,20, 1,0.2,0,1.0 ]
 PC = [20,20, 1,1 ]
 
 R = Y[0:NP[0]]
 F = anomaly.general_anomaly(1,state,R,NP,dim)
-print F
+print(F)
 
 W = Y[NP[0]:NP[0]+NP[1]]
 F = anomaly.general_anomaly(1,F[0],W,NP,dim)
-print "#2", F[1]
+print("#2", F[1])
 X = Y[NP[0]+NP[1]:]
 for x in X:
     F = anomaly.general_anomaly(1,F[0],[x],NP,dim)
-    print F[1]
+    print(F[1])
 
 
 
 
 
-print "----------------------------------------------------------"
+print( "----------------------------------------------------------")
 
 dim = 2
-print dim
+print(dim)
 
 X = range(0,60)
 Y = []
@@ -85,24 +86,25 @@ for x in X:
         t.append((0.0+e)/(dim+1))
     Y.append(t)
 
-print NP
-print len(Y),Y
+print(NP)
+print(len(Y),Y)
 
 state = None
 R = Y[0:NP[0]]
 F = anomaly.general_anomaly(1,F[0],R,NP,dim)
-print "RF",F
+for f in F[1]:
+    print ("RF",F)
 
 W = Y[NP[0]:NP[0]+NP[1]]
 F = anomaly.general_anomaly(1,F[0],W,NP,dim)
 for f in F[1]:
-    print "RF",f
+    print ("RF",f)
 
 
 X = Y[NP[0]+NP[1]:]
 
 for x in X:
     F = anomaly.general_anomaly(1,F[0],[x],NP,dim)
-    print "\t",x,F[1]
+    print ("\t",x,F[1])
 
     

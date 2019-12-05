@@ -94,13 +94,20 @@ static PyMethodDef anomalymethods[] = {
     { "histogram_comp", anomaly_histogram_comp, METH_VARARGS, "Run function to calculate similarity between histograms."},
     { NULL, NULL, 0, NULL }
 };
+static struct PyModuleDef anomaly_definition = { 
+  PyModuleDef_HEAD_INIT,
+  "anomaly",
+  "A Python module for d-array statistics.",
+  -1, 
+  anomalymethods
+};
 
 /**
  * Initialization function for the module.
  */
-void initanomaly (void)
-{
-    Py_InitModule ("anomaly", anomalymethods);
+PyMODINIT_FUNC PyInit_anomaly(void) {
+  Py_Initialize();
+  return PyModule_Create(&anomaly_definition);
 }
 
 
@@ -160,14 +167,22 @@ PyObject *anomaly_histogram_comp (PyObject *self, PyObject *args)
             if (debug) printf("%d %d\n", size1, size2);
             //            sleep(1);
 
-            for(i = 0; i < size1; i++)
+            for(i = 0; (unsigned) i < size1; i++)
             {
-	      //if (debug) printf("ITERATION  [%d]\n", i);
+	      int L =0;
+	      if (debug) printf("ITERATION  [%d]\n", i);
 	      tuple = PyList_GetItem (hist1, i);
-	      tempName = PyString_AsString ( PyTuple_GetItem (tuple, 0) );
-	      //if (debug) printf("ITERATION  [%d] x %s\n", i,tempName);
+	      if (debug && PyTuple_Check(tuple)) printf("ITERATION  [%d] is a tuple\n", i);
+	      L = PyTuple_Size (tuple);
+	      if (debug) {
+		if (L<=0) continue;
+		printf("items  %d \n", L);
+	      }
+	      tempName =  PyUnicode_FromString ( PyTuple_GetItem (tuple, 0) );
+	      if (debug) printf("ITERATION  [%d] x %s\n", i,tempName);
 	      h1->word[i] = malloc( (strlen(tempName)+1) * sizeof(char) );
 	      strcpy(h1->word[i], tempName);
+	      if (debug) printf("Copied  [%d] x %s\n", i,tempName);
 	      h1->number[i] = (Mat ) PyFloat_AsDouble ( PyTuple_GetItem (tuple, 1) );
 	      
 	      summation += h1->number[i];
@@ -183,11 +198,11 @@ PyObject *anomaly_histogram_comp (PyObject *self, PyObject *args)
             }
 
             summation =0;
-
-            for(i = 0; i < size2; i++)
+	    // PyUnicode_AsUTF8
+            for(i = 0; (unsigned)i < size2; i++)
             {
                 tuple2 = PyList_GetItem (hist2, i);
-                tempName = PyString_AsString ( PyTuple_GetItem (tuple2, 0) );
+                tempName = PyUnicode_FromString  ( PyTuple_GetItem (tuple2, 0) );
                 h2->word[i] = malloc( (strlen(tempName)+1) * sizeof(char) );
                 strcpy(h2->word[i], tempName);
                 h2->number[i] = (Mat) PyFloat_AsDouble ( PyTuple_GetItem (tuple2, 1) );
@@ -263,7 +278,7 @@ PyObject *anomaly_holtwinters (PyObject *self, PyObject *args)
         return NULL;
 
     /* Check the types of the first two argument not checked by PyArg_ParseTuple. */
-    if (state == NULL || (state != Py_None && ! PyString_Check (state)))
+    if (state == NULL || (state != Py_None && ! PyUnicode_Check (state)))
     {
         PyErr_SetString (PyExc_TypeError, "expected string at argument 1");
         return NULL;
@@ -287,7 +302,7 @@ PyObject *anomaly_holtwinters (PyObject *self, PyObject *args)
  
 	if (dimensions != Py_None)
         {
-	  dim = (int)PyInt_AsLong(dimensions);
+	  dim = (int)PyLong_AsLong(dimensions);
         }
 	/* Extract any user defined algorithm override values. */
         if (params != NULL)
@@ -299,11 +314,11 @@ PyObject *anomaly_holtwinters (PyObject *self, PyObject *args)
         /* Create a new state if provided by the user. */
         if (state != Py_None)
         {
-            unsigned int s = PyString_Size (state);
+            unsigned int s = PyBytes_Size (state);
             state_in = (HoltWinterState *) malloc (s);
             //tempState = (char *) malloc (s);
-            tempState = PyString_AsString (state);
-            //memcpy (state_in, PyString_AsString (state), s); CHECK THIS LATER !!!!!!
+            tempState =PyBytes_AsString (state);
+            //memcpy (state_in, PyUnicode_AsUTF8 (state), s); CHECK THIS LATER !!!!!!
             //fprintf(file, "tempState: [%s]\n", tempState);
             state_in = ReadHWState(0, &tempState);
             
@@ -334,11 +349,11 @@ PyObject *anomaly_holtwinters (PyObject *self, PyObject *args)
         debug_save_state (state_out, "a.bin");
 #endif /* PRINTSTATE */
 
-        //state = PyString_FromStringAndSize ((const char *) state_out, state_out->sizeinbytes);
+        //state = PyUnicode_FromStringAndSize ((const char *) state_out, state_out->sizeinbytes);
         //tempState = PrintHWState(state_out, 0, 0);
         //fwrite(tempState, sizeof(char), strlen(tempState), file);
         //fprintf(file, "\n\n");
-        state = PyString_FromString(tempState);
+        state = PyUnicode_FromString(tempState);
         //PRINTHWSTATE(state_out, 0);
 
 	anomaly = parse_output(output,0);
@@ -356,7 +371,7 @@ PyObject *anomaly_holtwinters (PyObject *self, PyObject *args)
         PyTuple_SetItem (result, 1, anomaly);
 
         //fclose(file);
-        return result;
+	return result;
     }
 
     return Py_BuildValue ("");
@@ -405,8 +420,9 @@ PyObject *anomaly_series (PyObject *self, PyObject *args)
 
     /* Check the types of the first two argument not checked by PyArg_ParseTuple. */
     
-    
-    if (state == NULL || (state != Py_None && ! PyString_Check (state)))
+    //PyBytes_Check
+    // PyBytes_Check
+    if (state == NULL || (state != Py_None && ! PyBytes_Check (state)))
     {
         PyErr_SetString (PyExc_TypeError, "expected string at argument 1");
         return NULL;
@@ -446,8 +462,8 @@ PyObject *anomaly_series (PyObject *self, PyObject *args)
         /* Create a new state if provided by the user. */
         if (state != Py_None)
         {
-            //unsigned int s = PyString_Size (state);
-	  tempState   = PyString_AsString (state);
+            //unsigned int s = PyBytes_Size (state);
+	  tempState   = PyBytes_AsString (state);
 	  if (debug) printf("State %s len %ld\n",tempState,strlen(tempState));
 	  if (strlen(tempState)>0) { 
 	    state_in = (void*) READ_STATE(type_method,&tempState);
@@ -477,7 +493,7 @@ PyObject *anomaly_series (PyObject *self, PyObject *args)
 	  anomaly = Py_None;
 	
         tempState = WRITE_STATE(type_method, state_in);
-        state = PyString_FromString(tempState);
+        state = PyBytes_FromString(tempState);
 	
 
 
@@ -526,13 +542,13 @@ parse_parameters (const char *keys[], Mat *values, PyObject *params)
     /* Iterate through the keys and set values as they are found. */
     while (keys[i] != NULL)
     {
-        PyObject *key = PyString_FromString (keys[i]);
+        PyObject *key = PyBytes_FromString (keys[i]);
         PyObject *value = NULL;
 
         if ((value = PyDict_GetItem (params, key)) != NULL)
         {
-            if (PyInt_Check (value))
-                values[i] = (double) PyInt_AsLong (value);
+            if (PyLong_Check (value))
+                values[i] = (double) PyLong_AsLong (value);
             else if (PyLong_Check (value))
                 values[i] = PyLong_AsDouble (value);
             else if (PyFloat_Check (value))
