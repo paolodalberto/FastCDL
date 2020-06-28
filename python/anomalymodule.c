@@ -45,6 +45,7 @@
 
 static int debug = 0;
 
+
 PyObject *anomaly_holtwinters (PyObject *self, PyObject *args);
 PyObject *anomaly_series (PyObject *self, PyObject *args);
 PyObject *anomaly_series_basic (PyObject *self, PyObject *args);
@@ -118,6 +119,7 @@ PyObject *anomaly_histogram_comp (PyObject *self, PyObject *args)
     PyObject *tuple;
     PyObject *tuple2;
     PyObject *result;
+    PyObject *tep;
     
     double *res;
     //FILE *file;
@@ -178,7 +180,9 @@ PyObject *anomaly_histogram_comp (PyObject *self, PyObject *args)
 		if (L<=0) continue;
 		printf("items  %d \n", L);
 	      }
-	      tempName =  PyUnicode_FromString ( PyTuple_GetItem (tuple, 0) );
+	      tep = PyTuple_GetItem (tuple, 0);
+	      
+	      tempName =  PyUnicode_AsUTF8( tep);
 	      if (debug) printf("ITERATION  [%d] x %s\n", i,tempName);
 	      h1->word[i] = malloc( (strlen(tempName)+1) * sizeof(char) );
 	      strcpy(h1->word[i], tempName);
@@ -202,7 +206,7 @@ PyObject *anomaly_histogram_comp (PyObject *self, PyObject *args)
             for(i = 0; (unsigned)i < size2; i++)
             {
                 tuple2 = PyList_GetItem (hist2, i);
-                tempName = PyUnicode_FromString  ( PyTuple_GetItem (tuple2, 0) );
+                tempName = PyUnicode_AsUTF8  ( PyTuple_GetItem (tuple2, 0) );
                 h2->word[i] = malloc( (strlen(tempName)+1) * sizeof(char) );
                 strcpy(h2->word[i], tempName);
                 h2->number[i] = (Mat) PyFloat_AsDouble ( PyTuple_GetItem (tuple2, 1) );
@@ -230,8 +234,8 @@ PyObject *anomaly_histogram_comp (PyObject *self, PyObject *args)
 	      printf(" res: %lf, %lf\n", res[0], res[1]);
 
 	    freeHistogramContents(h1);  
-	    freeHistogramContents(h2);  
 
+	    freeHistogramContents(h2);  
 	    result = Py_BuildValue ("dd", res[0], res[1]);
 	    free(res);
 
@@ -406,8 +410,9 @@ PyObject *anomaly_series (PyObject *self, PyObject *args)
     PyObject *state; // change this to string
     PyObject *series;
     PyObject *params;
-    PyObject *anomaly;
+    PyObject *anomaly = Py_None;
     PyObject *result;
+    PyObject * anomalies;
     //FILE *file;
     //char *tempState = NULL;
     //file = fopen("AnomalyModuleLog.t", "a");
@@ -445,7 +450,7 @@ PyObject *anomaly_series (PyObject *self, PyObject *args)
         GeneralizedOutput *output = NULL;
         unsigned int size = PyTuple_Check (series) ? 1 : PyList_Size (series);
         char *tempState ;
-	
+
 
 	
 	if (debug) printf("Dimensions %d \n",dim);
@@ -478,22 +483,85 @@ PyObject *anomaly_series (PyObject *self, PyObject *args)
         ALLOCATETS (timeseries, size,dim);
 	parse_and_copy_timeseries(series,timeseries,size);
 
-	
+	anomalies = PyList_New (1+timeseries->length/(int)p[MPLACE]); 	
 	if (debug) { PRINTTIMESERIES(timeseries,0);} 
 
 
         /* Generate the anomaly detection time series. */
+	
+	if ( (type_method == NonParametricMethod || type_method ==CompressionMethod ||  type_method ==KernelMethodMMD)  
+	     && timeseries->length> p[NPLACE]
+	     ) {
+	  
+	  int intervals = timeseries->length/p[MPLACE];
+	  int space= MAX((int)p[MPLACE],(int)p[NPLACE] ) ;
+	  int j;
+	  int location,delta;
+	  
+	  int counter = 0;
+	  TimeSeries *temp;
+	  TimeSeries *ts = timeseries;
+	  GeneralizedOutput * oo = output;
+	  
 
-        if (scalarF (timeseries, type_method, &state_in, &output, p)) // state_in is modified
-	  {
+	  if (debug) { 
+	    PRINTF(" ScalarF Call method = %d intervals %d\n", type_method,intervals);/* Register routines, allocate resources. */
+	  }
+
+	  ALLOCATETS(temp,space,dim);
+    
+	  // INITIALIZE STATE: REFERENCE WINDOW
+	  copy_ts_b(temp,ts, 0,  (int)p[NPLACE]);
+	  scalarF(temp,type_method,&state_in,&output,p);
+	  
+	  delta = (int)p[NPLACE] - (int)p[MPLACE];
+	  space = (int)p[MPLACE];
+    
+	  j = 1;
+	  location = j*space+delta;
+    
+
+	  for (j=1,location = j*space+delta; location <ts->length ;j++, location = j*space+delta ) {
+      
+	    int border = (ts->length-(location)<space)?ts->length-(location):space; 
+    
+  
+    
+	    copy_ts_b(temp,timeseries, location,  location+border);
+
+	    if (debug) {
+	      PRINTF(" times %d j*space %d \n", j,location);
+	      PRINTTIMESERIES(temp,0);
+	      
+	    }
+      
+
+	    scalarF(temp,type_method,&state_in,&output,p);
+	    anomaly = parse_output(output,type_method);
+	    PyList_SetItem (anomalies, j, anomaly);
+	    FREE_GEN_OUTPUT(oo);
+	    counter ++;
+	    
+	  }
+	  
+	  FREETS(temp);
+	  
+	  
+	  
+	}
+	else { 
+	  if (debug) { PRINTF(" classic methods .... \n"); }
+	  if (scalarF (timeseries, type_method, &state_in, &output, p)) {
 	    if (debug) { printf("python scalarF done \n");} 
 	    anomaly = parse_output(output,type_method);
+	    PyList_SetItem (anomalies, 0, anomaly);
 	  }
-	else 
-	  anomaly = Py_None;
-	
-        tempState = WRITE_STATE(type_method, state_in);
-        state = PyBytes_FromString(tempState);
+	  else 
+	    anomaly = Py_None;
+	}
+	if (debug) { PRINTF(" out loop \n"); }
+	//tempState = WRITE_STATE(type_method, state_in);
+        //state = PyBytes_FromString(tempState);
 	
 
 
@@ -501,8 +569,8 @@ PyObject *anomaly_series (PyObject *self, PyObject *args)
         free (state_out);
         FREE_STATE (type_method,state_in);
         FREETS (timeseries);
-        FREE_GEN_OUTPUT (output);
-        free(tempState);
+        //FREE_GEN_OUTPUT (output);
+        //free(tempState);
 
         /* Create a tuple consisting of the new state and the anomaly time series. */
 	if (anomaly != Py_None) { 
@@ -678,14 +746,17 @@ parse_output(GeneralizedOutput *output, unsigned int type) {
       PyTuple_SetItem (tuple, 1, value);
       value = PyFloat_FromDouble (output->pvalue->data[i].y[0]);
       PyTuple_SetItem (tuple, 2, value);
+      printf("value %ld  distance %f pvalue %f ", output->y->data[i].x, output->y->data[i].y[0],output->pvalue->data[i].y[0]);
       if (type ==0 || type ==2 ) {
 
 	value = PyFloat_FromDouble (output->ym->data[i].y[0]);
 	PyTuple_SetItem (tuple, 3, value);
 	value = PyFloat_FromDouble (output->dm->data[i].y[0]);
 	PyTuple_SetItem (tuple, 4, value);
-      }
+	printf("m  %f  d  %f \n", output->ym->data[i].y[0],output->dm->data[i].y[0]);
 
+      }
+      printf("\n");
       PyList_SetItem (anomaly, i, tuple);
       
   

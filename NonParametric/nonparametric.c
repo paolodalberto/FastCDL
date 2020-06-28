@@ -44,6 +44,7 @@ char *PrintNONPState(NonParametricState *t, int identation, int P) {
       line  = (char *) calloc((64+identation+128),sizeof(char));
       temp  = (char *) calloc((128+3*identation+128),sizeof(char));
     }
+
     assert(line && temp);
     IDENTS(identation,temp,line);SPRINT(temp,line,"SNONP B %u \n",t->sizeinbytes);
     IDENTS(identation,temp,line);SPRINT(temp,line,"R storage %d:\n",(t->r)?t->r->ts->max:0);

@@ -106,12 +106,13 @@ code:
 	#echo tar zcvf ./fastcdl.tar.gz  ./README.standaloneHistogramComparisonForRegression lib/ ./Makefile TimeSeries/  NonParametric/ Summation/ Sort/ Window/  include/ Poset/ R/CDL/ python/ Examples/ Java/ Perl/  myudfs/ 
 
 zlib: $(HOMEDIR)/TimeSeries/Compression/bzip2-1.0.5/libbz2.a
-	cd $(HOMEDIR)/TimeSeries/Compression/bzip2-1.0.5/
-	make libz2.a 
-	cd $(HOMEDIR)
-	bzip.sh $(HOMEDIR)
+	#cd $(HOMEDIR)/TimeSeries/Compression/bzip2-1.0.5/
+	#make clean libbz2.a 
+	#cd $(HOMEDIR)
+	bash $(HOMEDIR)/bzip.sh $(HOMEDIR)
 lib: $(obj)
-	#make zlib 
+	mkdir -p $(HOMEDIR)/lib
+	make zlib 
 	$(AR) $(HOMEDIR)/lib/libcdl.a $(obj) $(HOMEDIR)/TimeSeries/Compression/bzip2-1.0.5/libbz2.a 	
 #	$(CC) -shared -o $(HOMEDIR)/lib/libcdl.so $(obj) $(HOMEDIR)/TimeSeries/Compression/bzip2-1.0.5/libbz2.a
 
