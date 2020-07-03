@@ -15,6 +15,7 @@ import numpy as np
 import scipy.stats 
 import scipy.signal
 
+from scipy.ndimage.filters import correlate, convolve
 
 
 C = 3
@@ -173,7 +174,7 @@ def comparing_2N_sample(A,B, compression = True, thr = 0.95):
 if __name__ == "__main__":
 
 
-    if True:
+    if False:
         print("A vs B _v_v_v_v_v_v_v_v_v_v_________")
         ## this should be the same 
         a = comparing_using_flat_hist(A,B)
@@ -224,29 +225,97 @@ if __name__ == "__main__":
     #import pdb;pdb.set_trace()
     kernel =  np.array([[2,2],[1,1]])
 
-    K = A*1
-    H = B*1
+    K1 = A*1
+    K2 = B*1
 
-    for j in range(0,2):
+    for j in range(0,0):
         for i in range(0,C):
             k = 1/(j+1)
-            K[i,:,:] = scipy.signal.convolve2d(K[i,:,:]*k, kernel, boundary='symm', mode='same')
-            H[i,:,:] = scipy.signal.convolve2d(H[i,:,:], kernel, boundary='symm', mode='same')
+            K1[i,:,:] = scipy.signal.convolve2d(K1[i,:,:]*k, kernel, boundary='symm', mode='same')
+            K2[i,:,:] = scipy.signal.convolve2d(K2[i,:,:], kernel, boundary='symm', mode='same')
             
         print(k, "_x_x_x_x_x_x_x_x_x_x_________")
         #import pdb; pdb.set_trace()    
-        a = comparing_using_flat_hist(H,K)
+        a = comparing_using_flat_hist(K1,K2)
         if a[1]> 0.95:
             print(a)
             print("_^_^_^_^_^_^_^_^_^_^_________")
 
         for i in range(0,C):
-            a = comparing_using_flat_hist(H[i,:,:],K[i,:,:])
+            a = comparing_using_flat_hist(K1[i,:,:],K2[i,:,:])
             if a[1]> 0.95:
-                print("i", i, a)
+                print("i->", i, a)
                 print("_^_^_^_^_^_^_^_^_^_^_________")
         
         ## Can we capture the difference if we are using 2N-Sample
         ## comparison ?
         comparing_2N_sample(H,K,True)  
+    
+    # now introducing kernel quantized differently
+    kernelA =  np.array([[2.2,2.1],[1.2,1.1]])
+    kernelB =  np.array([[2.1,2.2],[1.1,1.2]])
+
+    for i in range(0,C):
+        K1[i,:,:] = scipy.signal.convolve2d(A[i,:,:], kernelA, boundary='symm', mode='same')
+        K2[i,:,:] = scipy.signal.convolve2d(A[i,:,:], kernelB, boundary='symm', mode='same')
+
+        
+    print("_x_x_x_x_x_x_x_x_x_x_________")
+    
+    a = comparing_using_flat_hist(K1,K2,True)
+    if a[1]> 0.95:
+        print(a)
+        print("_^_^_^_^_^_^_^_^_^_^_________")
+        
+    for i in range(0,C):
+        a = comparing_using_flat_hist(K1[i,:,:],K2[i,:,:])
+        if a[1]> 0.95:
+            print("i->", i, a)
+            print("_^_^_^_^_^_^_^_^_^_^_________")
+        
+
+    ## now we go fancy: we create an comparison with [y = f1(x),x ] vs
+    ## [y=f2(x),x] we create a vector output + inputs and compare this
+    ## sequence.
+    
+    comparing_2N_sample(K1,K2,False)  
+    #import pdb; pdb.set_trace()    
+    templea = np.ndarray((C*(W-1)*(H-1),6))*0.0
+    templeb = np.ndarray((C*(W-1)*(H-1),6))*0.0
+    l = -1
+    for i in range(0,C):
+        K1[i,:,:] = correlate(A[i,:,:], kernelA, mode='constant', cval=0.0)
+        K2[i,:,:] = correlate(A[i,:,:], kernelB, mode='constant',cval=0.0)
+        for h in range(0,H-1):
+            for w in range(0,W-1):
+                l+=1
+                q = [K1[i,h,w],K1[i,h,w]]
+                q.extend([ tw for tw in A[i,h:h+2,w:w+2].flatten()])
+                templea[l,:] = q
+                q = [K2[i,h,w],K2[i,h,w]]
+                q.extend([ tw for tw in A[i,h:h+2,w:w+2].flatten()])
+                
+                templeb[l,:] = q
+    
+    K1 = templea.reshape((C*(W-1)*(H-1),2,3))
+    K2 = templeb.reshape((C*(W-1)*(H-1),2,3))
+    print(K1.shape)
+    print("_x_x_x_x_x_x_x_x_x_x_________")
+    #import pdb; pdb.set_trace()    
+    a = comparing_using_flat_hist(K1,K2,True)
+    if a[1]> 0.95:
+        print(a)
+        print("_^_^_^_^_^_^_^_^_^_^_________")
+        
+    #for i in range(0,C):
+    #    a = comparing_using_flat_hist(K1[i,:,:],K2[i,:,:])
+    #    if a[1]> 0.95:
+    #        print("i->", i, a)
+    #        print("_^_^_^_^_^_^_^_^_^_^_________")
+        
+    ## Can we capture the difference if we are using 2N-Sample
+    ## comparison ?
+    comparing_2N_sample(K1,K2,False)  
+
+    
     
