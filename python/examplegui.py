@@ -299,8 +299,8 @@ if __name__ == "__main__":
                 q.extend([ tw for tw in A[i,h:h+2,w:w+2].flatten()])
                 templeb[l,:] = q
     
-    K1 = templea.reshape((C*(W-1)*(H-1),2,3))
-    K2 = templeb.reshape((C*(W-1)*(H-1),2,3))
+    K1 = templea.reshape((3,C*(W-1),2*(H-1)))#.transpose(2,0,1)
+    K2 = templeb.reshape((3,C*(W-1),2*(H-1)))#.transpose(2,0,1)
     print(K1.shape)
     print("_x_x_x_x_x_x_x_x_x_x_________")
     #import pdb; pdb.set_trace()    
