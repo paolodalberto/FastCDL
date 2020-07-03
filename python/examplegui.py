@@ -273,13 +273,14 @@ if __name__ == "__main__":
             print("i->", i, a)
             print("_^_^_^_^_^_^_^_^_^_^_________")
         
+    comparing_2N_sample(K1,K2,False)  
 
+    
     ## now we go fancy: we create an comparison with [y = f1(x),x ] vs
     ## [y=f2(x),x] we create a vector output + inputs and compare this
     ## sequence.
     
-    comparing_2N_sample(K1,K2,False)  
-    #import pdb; pdb.set_trace()    
+    
     templea = np.ndarray((C*(W-1)*(H-1),6))*0.0
     templeb = np.ndarray((C*(W-1)*(H-1),6))*0.0
     l = -1
@@ -289,12 +290,13 @@ if __name__ == "__main__":
         for h in range(0,H-1):
             for w in range(0,W-1):
                 l+=1
+                ## building [f(x), x]
+                
                 q = [K1[i,h,w],K1[i,h,w]]
                 q.extend([ tw for tw in A[i,h:h+2,w:w+2].flatten()])
                 templea[l,:] = q
                 q = [K2[i,h,w],K2[i,h,w]]
                 q.extend([ tw for tw in A[i,h:h+2,w:w+2].flatten()])
-                
                 templeb[l,:] = q
     
     K1 = templea.reshape((C*(W-1)*(H-1),2,3))
