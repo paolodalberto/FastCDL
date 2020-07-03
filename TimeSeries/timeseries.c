@@ -27,7 +27,7 @@
 
 #include <type.h>
 
-static int debug=1; 
+static int debug=0; 
 
 #define N_PVALUES_METHODS 3
 

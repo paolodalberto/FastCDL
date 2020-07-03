@@ -483,7 +483,7 @@ PyObject *anomaly_series (PyObject *self, PyObject *args)
         ALLOCATETS (timeseries, size,dim);
 	parse_and_copy_timeseries(series,timeseries,size);
 
-	anomalies = PyList_New (1+timeseries->length/(int)p[MPLACE]); 	
+	anomalies = PyList_New (timeseries->length/(int)p[MPLACE] + (timeseries->length%((int)p[MPLACE]))?1:0); 	
 	if (debug) { PRINTTIMESERIES(timeseries,0);} 
 
 
@@ -513,6 +513,7 @@ PyObject *anomaly_series (PyObject *self, PyObject *args)
 	  // INITIALIZE STATE: REFERENCE WINDOW
 	  copy_ts_b(temp,ts, 0,  (int)p[NPLACE]);
 	  scalarF(temp,type_method,&state_in,&output,p);
+	  FREE_GEN_OUTPUT(output);
 	  
 	  delta = (int)p[NPLACE] - (int)p[MPLACE];
 	  space = (int)p[MPLACE];
@@ -538,8 +539,9 @@ PyObject *anomaly_series (PyObject *self, PyObject *args)
 
 	    scalarF(temp,type_method,&state_in,&output,p);
 	    anomaly = parse_output(output,type_method);
-	    PyList_SetItem (anomalies, j, anomaly);
-	    FREE_GEN_OUTPUT(oo);
+	    
+	    PyList_SetItem (anomalies, j-1, anomaly);
+	    FREE_GEN_OUTPUT(output);
 	    counter ++;
 	    
 	  }
@@ -566,7 +568,7 @@ PyObject *anomaly_series (PyObject *self, PyObject *args)
 
 
         /* Free all memory used to generate the anomaly time series. */
-        free (state_out);
+        //free (state_out);
         FREE_STATE (type_method,state_in);
         FREETS (timeseries);
         //FREE_GEN_OUTPUT (output);
@@ -576,7 +578,7 @@ PyObject *anomaly_series (PyObject *self, PyObject *args)
 	if (anomaly != Py_None) { 
 	  result = PyTuple_New (2);
 	  PyTuple_SetItem (result, 0, state);
-	  PyTuple_SetItem (result, 1, anomaly);
+	  PyTuple_SetItem (result, 1, anomalies);
 	}
 	else {
 	  result = PyTuple_New (1);
@@ -746,17 +748,17 @@ parse_output(GeneralizedOutput *output, unsigned int type) {
       PyTuple_SetItem (tuple, 1, value);
       value = PyFloat_FromDouble (output->pvalue->data[i].y[0]);
       PyTuple_SetItem (tuple, 2, value);
-      printf("value %ld  distance %f pvalue %f ", output->y->data[i].x, output->y->data[i].y[0],output->pvalue->data[i].y[0]);
+      if (debug) printf("value %ld  distance %f pvalue %f ", output->y->data[i].x, output->y->data[i].y[0],output->pvalue->data[i].y[0]);
       if (type ==0 || type ==2 ) {
 
 	value = PyFloat_FromDouble (output->ym->data[i].y[0]);
 	PyTuple_SetItem (tuple, 3, value);
 	value = PyFloat_FromDouble (output->dm->data[i].y[0]);
 	PyTuple_SetItem (tuple, 4, value);
-	printf("m  %f  d  %f \n", output->ym->data[i].y[0],output->dm->data[i].y[0]);
+	if (debug) printf("m  %f  d  %f \n", output->ym->data[i].y[0],output->dm->data[i].y[0]);
 
       }
-      printf("\n");
+      if (debug) printf("\n");
       PyList_SetItem (anomaly, i, tuple);
       
   

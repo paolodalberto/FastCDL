@@ -15,7 +15,7 @@ CC  = gcc
 FF  = gfortran
 AR  = ar rcs
 
-OPT_PROC =  -O1 -g    -fPIC
+OPT_PROC =  -Wall -Winline -O2 -g   -fPIC  
 
 ## Machine Specific optimizations 
 #MACHTYPE = x86_64

@@ -327,7 +327,7 @@ int bootstrap_compression( KolmogorovState *state,
     
     if (tot*PVAL[j]>(double)(tot -count[i])) {
       state->boundaries[j] = res[i];
-      if (1 || debug) {PRINTF("B %e PV %e I %d \n",state->boundaries[j],PVAL[j],count[i]);}
+      if (debug==2) {PRINTF("B %e PV %e I %d \n",state->boundaries[j],PVAL[j],count[i]);}
       j--;
     
 
