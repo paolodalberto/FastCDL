@@ -8,7 +8,7 @@
 ##
 ########################################################################3
 
-
+from multiprocessing import Pool
 import anomaly
 import matplotlib.pyplot as plt
 import numpy as np
@@ -65,8 +65,104 @@ def comparing_using_flat_hist(A,B, plot = False):
     return a
 
 
+def from_tensor_to_series(A,B,tr=(1,0,2), plot = False):
 
-def comparing_2N_sample(A,B, compression = True, thr = 0.95):  
+    if tr != (0,1,2):
+        A1 = A.transpose(tr)
+        B1 = B.transpose(tr)
+    else:
+        A1 = A
+        B1 = B
+
+    if plot:
+        plt.hist(A1.flatten(), bins=1000)
+        plt.show()
+
+        
+    C,H,W = A1.shape 
+
+    X = range(0,C)
+    Y = []
+
+    for x in X:
+        t = [x]
+        t.extend([ tw for tw in A1[x,:,:].flatten()])
+        Y.append(t)
+    for x in X:
+        t = [x+len(X)]
+        t.extend([ tw for tw in B1[x,:,:].flatten()])
+        Y.append(t)
+
+    return Y, C, H,W
+
+def method(m, NP):
+    if m ==1 and NP[4] == 1: return "POSET"
+    elif m ==1 and NP[4] == 0: return "MST"
+    elif m ==5 and NP[3] == 0: return "Kernel Linear"
+    elif m ==5 and NP[3] == 1: return "Kernel Square"
+    elif m==4 : return "Compression %d b" % NP[3]
+    return "HMMM"
+
+def f(X):
+    thr = X.pop(0)
+    verbose = X.pop(0)
+    ## X  = [1,state,Y,NP,dim]
+    met =  method(X[0],X[3])
+    if verbose: print(met)
+    F = anomaly.general_anomaly(X[0],X[1],X[2],X[3],X[4])
+    Header = " item %f distance %f p-value %f "
+    R = []
+
+    if len(F)>1 :
+        for fr in F[1]:
+            for f in fr:
+                R.append(f)
+                if f[2] > thr:
+                    if verbose:
+                        print (method(X[0],X[3])+ (Header  %(f[0],f[1],f[2])))
+                        print("_*_*_*_*_*_*_*_*_*___________")
+    return [met, R ]          
+
+def comparing_2N_sample_Pool(A,B, compression = True, thr = 0.95, tr = (1,0,2)):
+
+    Verbose = False
+    ## the series is is determined by H x (CW) as default
+    Y,C,H,W = from_tensor_to_series(A,B,tr=tr)
+    dim = H*W
+    #import pdb; pdb.set_trace()
+    Xs = []
+    NP = [C,C, 1,0.2,1,1.0 ]
+    state0 = None
+    X = [thr,Verbose,1,state0,Y,NP,dim]
+    Xs.append(X)
+    state1 = None
+    NP = [C,C, 1,0.2,0,1.0 ]
+    X = [thr,Verbose,1,state1,Y,NP,dim]
+    Xs.append(X)
+    state2 = None
+    NP = [C,C, 1, 0]
+    X = [thr,Verbose,5,state2,Y,NP,dim]
+    Xs.append(X)
+    state3 = None
+    NP = [C,C, 1, 1]
+    X = [thr,Verbose,5,state3,Y,NP,dim]
+    Xs.append(X)
+
+    if compression:
+        state4 = None
+        NP = [C,C, 1, 32]
+        X = [thr,Verbose,4,state4,Y,NP,dim]
+        Xs.append(X)
+    Rx = []
+    with Pool(len(Xs)) as p:
+        Rx.extend( p.map(f, Xs));
+
+    for r in Rx:
+        print(r)
+    return Rx
+
+
+def comparing_2N_sample(A,B, compression = True, thr = 0.95, tr = (1,0,2)):  
     ### Kolmogorov-Smirnov 2-N sample flat comparison
     ###
     R = []
@@ -75,39 +171,20 @@ def comparing_2N_sample(A,B, compression = True, thr = 0.95):
     print("KS 2NSample", ks)
     print("___________________")
 
-    C,H,W = A.shape 
-    ### How to build a series using the Height as reference the series
-    ### has H entries and C*W point (dimensions) This is realistic in
-    ### the sense that we can compute the output tensor in section and
-    ### the computation could be the reason of the difference.
-
-    ### H becomes the number of samples: more samples more
-    ### representative the distribution.
-    X = range(0,H)
-    Y = []
-    dim = C*W
-    
-    for x in X:
-        t = [x]
-        for c in range(0,C):
-            for w in range(0,W):
-                t.append(A[c,x,w])
-        Y.append(t)
-    for x in X:
-        t = [x+len(X)]
-        for c in range(0,C):
-            for w in range(0,W):
-                t.append(B[c,x,w])
-        Y.append(t)
-
     
     ## Y is a series composed by A and B.  The first parameter the
     ## method. Here we test them all. Howver, the compression will be
     ## the one taking longer.
 
-    #    import pdb; pdb.set_trace()
-    NP = [H,H, 1,0.2,1,1.0 ]
+    ## the series is is determined by H x (CW) as default
+    Y,C,H,W = from_tensor_to_series(A,B,tr=tr)
+    dim = H*W
+    #import pdb; pdb.set_trace()
+
+
+    NP = [C,C, 1,0.2,1,1.0 ]
     state = None
+    X = [1,state,Y,NP,dim]
     F = anomaly.general_anomaly(1,state,Y,NP,dim)
     Header = " item %f distance %f p-value %f "
     if len(F)>1 :
@@ -119,7 +196,7 @@ def comparing_2N_sample(A,B, compression = True, thr = 0.95):
                     print("_*_*_*_*_*_*_*_*_*___________")
     
     state = None
-    NP = [H,H, 1,0.2,0,1.0 ]
+    NP = [C,C, 1,0.2,0,1.0 ]
     F = anomaly.general_anomaly(1,state,Y,NP,dim)
     if len(F)>1:
         for fr in F[1]:
@@ -131,7 +208,7 @@ def comparing_2N_sample(A,B, compression = True, thr = 0.95):
                     print("_*_*_*_*_*_*_*_*_*___________")
     
     state = None
-    NP = [H,H, 1, 0]
+    NP = [C,C, 1, 0]
     F = anomaly.general_anomaly(5,state,Y,NP,dim)
     if len(F)>1:
         for fr in F[1]:
@@ -143,7 +220,7 @@ def comparing_2N_sample(A,B, compression = True, thr = 0.95):
                     print("_*_*_*_*_*_*_*_*_*___________")
     
     state = None
-    NP = [H,H, 1, 1]
+    NP = [C,C, 1, 1]
     F = anomaly.general_anomaly(5,state,Y,NP,dim)
     if len(F)>1:
         for fr in F[1]:
@@ -157,7 +234,7 @@ def comparing_2N_sample(A,B, compression = True, thr = 0.95):
 
     if not compression: return R
     state = None
-    NP = [H,H, 1, 100]
+    NP = [C,C, 1, 100]
     
     F = anomaly.general_anomaly(4,state,Y,NP,dim)
     if len(F)>1:
@@ -174,7 +251,7 @@ def comparing_2N_sample(A,B, compression = True, thr = 0.95):
 if __name__ == "__main__":
 
 
-    if False:
+    if True:
         print("A vs B _v_v_v_v_v_v_v_v_v_v_________")
         ## this should be the same 
         a = comparing_using_flat_hist(A,B)
@@ -188,7 +265,7 @@ if __name__ == "__main__":
                 print("_^_^_^_^_^_^_^_^_^_^_________")
 
 
-        comparing_2N_sample(A,B,False)  
+        comparing_2N_sample_Pool(A,B)  
         print("A vs A*B _v_v_v_v_v_v_v_v_v_v_________")
         ## this should be the different
         D = A*B 
@@ -202,7 +279,7 @@ if __name__ == "__main__":
                 print("i -> ", i, a)
                 print("_^_^_^_^_^_^_^_^_^_^_________")
 
-        comparing_2N_sample(A,D,False)  
+        comparing_2N_sample_Pool(A,D)  
         print("B[1] diff A[1] _v_v_v_v_v_v_v_v_v_v_________")
         ## this should be different because one channel is different. A
         ## flat comparison likely fails.
@@ -220,7 +297,7 @@ if __name__ == "__main__":
             
         ## Can we capture the difference if we are using 2N-Sample
         ## comparison ?
-        comparing_2N_sample(A,D,False)  
+        comparing_2N_sample_Pool(A,D,False)  
     
     #import pdb;pdb.set_trace()
     kernel =  np.array([[2,2],[1,1]])
@@ -228,7 +305,7 @@ if __name__ == "__main__":
     K1 = A*1
     K2 = B*1
 
-    for j in range(0,0):
+    for j in range(0,3):
         for i in range(0,C):
             k = 1/(j+1)
             K1[i,:,:] = scipy.signal.convolve2d(K1[i,:,:]*k, kernel, boundary='symm', mode='same')
@@ -249,7 +326,7 @@ if __name__ == "__main__":
         
         ## Can we capture the difference if we are using 2N-Sample
         ## comparison ?
-        comparing_2N_sample(H,K,True)  
+        comparing_2N_sample_Pool(K1,K2,True)  
     
     # now introducing kernel quantized differently
     kernelA =  np.array([[2.2,2.1],[1.2,1.1]])
@@ -262,7 +339,7 @@ if __name__ == "__main__":
         
     print("_x_x_x_x_x_x_x_x_x_x_________")
     
-    a = comparing_using_flat_hist(K1,K2,True)
+    a = comparing_using_flat_hist(K1,K2)
     if a[1]> 0.95:
         print(a)
         print("_^_^_^_^_^_^_^_^_^_^_________")
@@ -273,16 +350,15 @@ if __name__ == "__main__":
             print("i->", i, a)
             print("_^_^_^_^_^_^_^_^_^_^_________")
         
-    comparing_2N_sample(K1,K2,False)  
+    comparing_2N_sample_Pool(K1,K2)  
 
-    
     ## now we go fancy: we create an comparison with [y = f1(x),x ] vs
     ## [y=f2(x),x] we create a vector output + inputs and compare this
     ## sequence.
     
     
-    templea = np.ndarray((C*(W-1)*(H-1),6))*0.0
-    templeb = np.ndarray((C*(W-1)*(H-1),6))*0.0
+    templea = np.ndarray((C*(W-1)*(H-1),5))*0.0
+    templeb = np.ndarray((C*(W-1)*(H-1),5))*0.0
     l = -1
     for i in range(0,C):
         K1[i,:,:] = correlate(A[i,:,:], kernelA, mode='constant', cval=0.0)
@@ -292,32 +368,45 @@ if __name__ == "__main__":
                 l+=1
                 ## building [f(x), x]
                 
-                q = [K1[i,h,w],K1[i,h,w]]
+                q = [K1[i,h,w]]
                 q.extend([ tw for tw in A[i,h:h+2,w:w+2].flatten()])
                 templea[l,:] = q
-                q = [K2[i,h,w],K2[i,h,w]]
+                q = [K2[i,h,w]]
                 q.extend([ tw for tw in A[i,h:h+2,w:w+2].flatten()])
                 templeb[l,:] = q
     
-    K1 = templea.reshape((C*(W-1)*(H-1),2,3)).transpose(2,0,1)
-    K2 = templeb.reshape((C*(W-1)*(H-1),2,3)).transpose(2,0,1)
+    K1 = templea.reshape((C*(W-1)*(H-1),5,1))
+    K2 = templeb.reshape((C*(W-1)*(H-1),5,1))
     print(K1.shape)
     print("_x_x_x_x_x_x_x_x_x_x_________")
     #import pdb; pdb.set_trace()    
-    a = comparing_using_flat_hist(K1,K2,True)
+    a = comparing_using_flat_hist(K1,K2)
     if a[1]> 0.95:
         print(a)
         print("_^_^_^_^_^_^_^_^_^_^_________")
         
-    #for i in range(0,C):
-    #    a = comparing_using_flat_hist(K1[i,:,:],K2[i,:,:])
-    #    if a[1]> 0.95:
-    #        print("i->", i, a)
-    #        print("_^_^_^_^_^_^_^_^_^_^_________")
-        
+    SAMPLE = C*(W-1)*(H-1)> 15000
+
+    if SAMPLE:
+        sample = 10000
+    else:
+        sample = C*(W-1)*(H-1)
+    
     ## Can we capture the difference if we are using 2N-Sample
     ## comparison ?
-    comparing_2N_sample(K1[:,0:10000,:],K2[:,0:10000,:],False)  
-
+    if SAMPLE:
+        comparing_2N_sample_Pool(K1[0:sample,:,:],
+                                 K2[0:sample,:,:],
+                                 compression = False,
+                                 thr=0.95,
+                                 tr = (0,1,2)
+        )  
+    else:
+        comparing_2N_sample_Pool(K1,
+                                 K2,
+                                 compression = True,
+                                 thr=0.95,
+                                 tr = (0,1,2)
+        )
     
     
